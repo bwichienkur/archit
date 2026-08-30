@@ -8,10 +8,11 @@ export type CadImportJob = {
   error?: string | null;
   document?: CadDocument | null;
   validation?: CadImportValidation | null;
+  projectId?: string | null;
 };
 
 export interface CadImportGateway {
-  upload(file: File, onProgress?: (job: CadImportJob) => void): Promise<CadImportJob>;
+  upload(file: File, projectId?: string | null, onProgress?: (job: CadImportJob) => void): Promise<CadImportJob>;
   getJob(jobId: string): Promise<CadImportJob>;
 }
 
@@ -21,9 +22,10 @@ export class HttpCadImportGateway implements CadImportGateway {
     private readonly timeoutMs = 5 * 60 * 1000,
   ) {}
 
-  async upload(file: File, onProgress?: (job: CadImportJob) => void): Promise<CadImportJob> {
+  async upload(file: File, projectId: string | null = null, onProgress?: (job: CadImportJob) => void): Promise<CadImportJob> {
     const body = new FormData();
     body.append('file', file);
+    if (projectId) body.append('projectId', projectId);
     const response = await fetch(`${this.baseUrl}/api/cad/imports`, { method: 'POST', body });
     if (!response.ok) throw new Error(await readError(response));
     const queued = await response.json() as CadImportJob;
