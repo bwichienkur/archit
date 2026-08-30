@@ -30,23 +30,20 @@ export function ValidationReport({ validation, onClose }: Props) {
         <Metric label="Normalized entities" value={validation.normalizedEntityCount}/>
         <Metric label="Unsupported" value={validation.unsupportedEntityCount}/>
         <Metric label="Count check" value={countMatch ? 'Match' : 'Mismatch'}/>
+        <Metric label="Bounds delta" value={validation.boundsDelta == null ? '—' : format(validation.boundsDelta)}/>
+        <Metric label="Issues" value={validation.issues.length}/>
       </div>
 
+      <IssueSection validation={validation}/>
       <ReportSection title="Missing references" items={validation.missingReferences}/>
       <ReportSection title="Missing fonts" items={validation.missingFonts}/>
       <ReportSection title="Warnings" items={validation.warnings}/>
-
-      {validation.boundsDelta && <section className="report-section">
-        <h3>BOUNDING BOX DELTA</h3>
-        <div className="validation-grid compact">
-          <Metric label="Min X" value={format(validation.boundsDelta.minX)}/>
-          <Metric label="Min Y" value={format(validation.boundsDelta.minY)}/>
-          <Metric label="Max X" value={format(validation.boundsDelta.maxX)}/>
-          <Metric label="Max Y" value={format(validation.boundsDelta.maxY)}/>
-        </div>
-      </section>}
     </div>
   </div>;
+}
+
+function IssueSection({ validation }: { validation: CadImportValidation }) {
+  return <section className="report-section"><h3>VALIDATION ISSUES</h3>{validation.issues.length === 0 ? <p className="report-empty">None</p> : <div className="issue-list">{validation.issues.map((issue, index)=><div className={`issue ${issue.severity}`} key={`${issue.code}-${index}`}><div><strong>{issue.code}</strong><span>{issue.severity}</span></div><p>{issue.message}</p>{(issue.sourceHandle || issue.layerId) && <small>{issue.sourceHandle ? `Handle ${issue.sourceHandle}` : ''}{issue.sourceHandle && issue.layerId ? ' • ' : ''}{issue.layerId ? `Layer ${issue.layerId}` : ''}</small>}</div>)}</div>}</section>;
 }
 
 function ReportSection({ title, items }: { title: string; items: string[] }) {
