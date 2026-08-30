@@ -96,3 +96,5 @@ DWG ingestion -> normalized immutable CAD -> fidelity validation -> semantic ext
 - Drawing units are explicit before semantic geometry becomes editable BIM.
 - Opening dimensions are not invented when source metadata is absent.
 - User modifications create building-model revisions rather than modifying the imported reference.
+
+> Persistence note: the current durable implementation is local filesystem JSON/artifact storage, intentionally behind interfaces so PostgreSQL and cloud object storage can replace it without changing the editor/API contracts.
