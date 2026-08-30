@@ -26,7 +26,7 @@ describe('detectOpeningCandidates', () => {
       sourceBlockName: 'Single Door',
       bounds: { min: { x: 42, y: -2 }, max: { x: 78, y: 2 } },
       geometry: { affine2d: [1,0,0,1,60,0], blockName: 'Single Door' },
-      properties: { Width: 36, Height: 80, Style: 'single-flush' },
+      properties: { Width: 36, Height: 80, Style: 'single-flush', Handing: 'LH', SwingDirection: 'Inswing' },
     }];
 
     const result = detectOpeningCandidates(document, [wall]);
@@ -38,6 +38,8 @@ describe('detectOpeningCandidates', () => {
     expect(opening.offsetFromWallStart).toBeCloseTo(42);
     expect(opening.width).toBe(36);
     expect(opening.height).toBe(80);
+    expect(opening.handing).toBe('left');
+    expect(opening.swing).toBe('in');
     expect(opening.evidence.method).toBe('classified-block-name');
   });
 
@@ -56,7 +58,22 @@ describe('detectOpeningCandidates', () => {
     const opening = result.candidates[0];
     if (!opening || (opening.kind !== 'door' && opening.kind !== 'window')) throw new Error('Expected opening');
     expect(opening.sillHeight).toBe(36);
+    expect(opening.handing).toBeUndefined();
+    expect(opening.swing).toBeUndefined();
     expect(opening.evidence.method).toBe('explicit-opening-metadata');
+  });
+
+  it('does not coerce ambiguous handing or swing values', () => {
+    const document = baseDocument();
+    document.entities = [{
+      id: 'door-ambiguous', sourceHandle: 'D3', type: 'block-reference', layerId: 'doors', sourceBlockName: 'Door',
+      bounds: { min: { x: 42, y: -2 }, max: { x: 78, y: 2 } }, geometry: { position: { x: 60, y: 0 } },
+      properties: { Width: 36, Height: 80, Handing: 'reversible', Swing: 'double-acting' },
+    }];
+    const opening = detectOpeningCandidates(document, [wall]).candidates[0];
+    if (!opening || (opening.kind !== 'door' && opening.kind !== 'window')) throw new Error('Expected opening');
+    expect(opening.handing).toBeUndefined();
+    expect(opening.swing).toBeUndefined();
   });
 
   it('does not invent dimensions for opening-like blocks', () => {
