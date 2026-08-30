@@ -24,7 +24,7 @@ builder.Services.AddSingleton<ICadImportQueue, InMemoryCadImportQueue>();
 builder.Services.AddSingleton<ICadArtifactStore, LocalCadArtifactStore>();
 builder.Services.AddSingleton<ICadImportJobStore, LocalCadImportJobStore>();
 builder.Services.AddHostedService<CadImportWorker>();
-builder.Services.AddSingleton<IProjectRepository, InMemoryProjectRepository>();
+builder.Services.AddSingleton<IProjectRepository, LocalProjectRepository>();
 
 var app = builder.Build();
 app.UseCors();
