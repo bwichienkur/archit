@@ -21,6 +21,7 @@ public static class PersistenceRegistration
             services.AddSingleton<ITenantRepository,PostgresTenantRepository>();
             services.AddSingleton<IExportJobRepository,PostgresExportJobRepository>();
             services.AddSingleton<ICadImportJobStore,PostgresCadImportJobStore>();
+            services.AddSingleton<ICadImportQueue,PostgresCadImportQueue>();
         }
 
         var blobConnection=configuration["Storage:AzureBlob:ConnectionString"]??Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING");
