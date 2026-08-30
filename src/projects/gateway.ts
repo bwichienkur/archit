@@ -1,3 +1,5 @@
+import { apiFetch } from '../auth/apiFetch';
+
 export type ProjectRecord = {
   id: string;
   tenantId: string | null;
@@ -20,7 +22,7 @@ export type ProjectRevision<TModel = unknown> = {
 
 export interface ProjectGateway {
   createProject(name: string, tenantId?: string | null): Promise<ProjectRecord>;
-  listProjects(): Promise<ProjectRecord[]>;
+  listProjects(tenantId?: string | null): Promise<ProjectRecord[]>;
   getProject(projectId:string):Promise<ProjectRecord>;
   createRevision<TModel>(projectId: string, input: {
     parentRevisionId?: string | null;
@@ -38,7 +40,7 @@ export class HttpProjectGateway implements ProjectGateway {
   constructor(private readonly baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5080') {}
 
   async createProject(name: string, tenantId: string | null = null): Promise<ProjectRecord> {
-    const response = await fetch(`${this.baseUrl}/api/projects`, {
+    const response = await apiFetch(`${this.baseUrl}/api/projects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, tenantId }),
@@ -46,8 +48,8 @@ export class HttpProjectGateway implements ProjectGateway {
     return readJson<ProjectRecord>(response);
   }
 
-  async listProjects(){return readJson<ProjectRecord[]>(await fetch(`${this.baseUrl}/api/projects`));}
-  async getProject(projectId:string){return readJson<ProjectRecord>(await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(projectId)}`));}
+  async listProjects(tenantId:string|null=null){const query=tenantId?`?tenantId=${encodeURIComponent(tenantId)}`:'';return readJson<ProjectRecord[]>(await apiFetch(`${this.baseUrl}/api/projects${query}`));}
+  async getProject(projectId:string){return readJson<ProjectRecord>(await apiFetch(`${this.baseUrl}/api/projects/${encodeURIComponent(projectId)}`));}
 
   async createRevision<TModel>(projectId: string, input: {
     parentRevisionId?: string | null;
@@ -57,7 +59,7 @@ export class HttpProjectGateway implements ProjectGateway {
     model: TModel;
     note?: string | null;
   }): Promise<ProjectRevision<TModel>> {
-    const response = await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(projectId)}/revisions`, {
+    const response = await apiFetch(`${this.baseUrl}/api/projects/${encodeURIComponent(projectId)}/revisions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -65,8 +67,8 @@ export class HttpProjectGateway implements ProjectGateway {
     return readJson<ProjectRevision<TModel>>(response);
   }
 
-  async listRevisions<TModel=unknown>(projectId:string){return readJson<ProjectRevision<TModel>[]>(await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(projectId)}/revisions`));}
-  async getRevision<TModel=unknown>(projectId:string,revisionId:string){return readJson<ProjectRevision<TModel>>(await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(projectId)}/revisions/${encodeURIComponent(revisionId)}`));}
+  async listRevisions<TModel=unknown>(projectId:string){return readJson<ProjectRevision<TModel>[]>(await apiFetch(`${this.baseUrl}/api/projects/${encodeURIComponent(projectId)}/revisions`));}
+  async getRevision<TModel=unknown>(projectId:string,revisionId:string){return readJson<ProjectRevision<TModel>>(await apiFetch(`${this.baseUrl}/api/projects/${encodeURIComponent(projectId)}/revisions/${encodeURIComponent(revisionId)}`));}
 }
 
 export async function readJson<T>(response: Response): Promise<T> {
