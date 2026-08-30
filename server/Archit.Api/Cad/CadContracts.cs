@@ -16,12 +16,41 @@ public sealed record NormalizedCadDocument(
     string DrawingUnits,
     CadBounds Bounds,
     IReadOnlyList<CadLayer> Layers,
+    IReadOnlyList<CadBlockDefinition> Blocks,
     IReadOnlyList<CadEntity> Entities,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    string? SourceCadVersion = null,
+    double? UnitScaleToMeters = null);
 
 public sealed record CadPoint(double X, double Y, double? Z = null);
 public sealed record CadBounds(CadPoint Min, CadPoint Max);
-public sealed record CadLayer(string Id, string Name, bool Visible, bool Locked, string? Color = null, string? LineType = null);
+
+public sealed record CadLayer(
+    string Id,
+    string Name,
+    bool Visible,
+    bool Locked,
+    bool Frozen = false,
+    string? Color = null,
+    string? LineType = null,
+    double? LineWeight = null,
+    double? Transparency = null);
+
+public sealed record CadStyle(
+    string? Color = null,
+    string? LineType = null,
+    double? LineWeight = null,
+    double? Transparency = null);
+
+public sealed record CadBlockDefinition(
+    string Id,
+    string Name,
+    string SourceHandle,
+    CadPoint BasePoint,
+    IReadOnlyList<string> EntityIds,
+    bool IsExternalReference = false,
+    string? ExternalPath = null);
+
 public sealed record CadEntity(
     string Id,
     string SourceHandle,
@@ -30,7 +59,21 @@ public sealed record CadEntity(
     CadBounds Bounds,
     IReadOnlyDictionary<string, object?> Geometry,
     IReadOnlyDictionary<string, object?> Properties,
-    bool Unsupported = false);
+    string? OwnerHandle = null,
+    IReadOnlyList<double>? Transform = null,
+    CadStyle? Style = null,
+    string? SourceBlockName = null,
+    bool Unsupported = false,
+    string? UnsupportedReason = null);
+
+public sealed record CadValidationIssue(
+    string Code,
+    string Severity,
+    string Message,
+    string? EntityId = null,
+    string? SourceHandle = null,
+    string? LayerId = null,
+    double? Delta = null);
 
 public sealed record CadImportValidation(
     string SourceFileName,
@@ -39,8 +82,12 @@ public sealed record CadImportValidation(
     int UnsupportedEntityCount,
     IReadOnlyList<string> MissingReferences,
     IReadOnlyList<string> MissingFonts,
+    IReadOnlyList<CadValidationIssue> Issues,
     IReadOnlyList<string> Warnings,
-    bool Passed);
+    bool Passed,
+    CadBounds? SourceBounds = null,
+    CadBounds? NormalizedBounds = null,
+    double? BoundsDelta = null);
 
 public interface ICadImportProvider
 {
