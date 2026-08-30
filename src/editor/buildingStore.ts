@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import type { CadDocument } from '../cad/types';
-import type { ArchitecturalWall, BuildingModelV2 } from '../domain/building';
+import type { ArchitecturalWall, BuildingModelV2, WallOpening } from '../domain/building';
 import { recalculateInferredRooms } from '../domain/recalculate';
+import { validateHostedOpening } from '../domain/wallGraph';
 import { createBuildingModelFromCandidates } from '../semantic/acceptance';
 import type { ReviewedCandidate } from '../semantic/store';
-import { BuildingCommandHistory, UpdateArchitecturalWallCommand } from './buildingCommands';
+import { BuildingCommandHistory, UpdateArchitecturalWallCommand, UpdateWallOpeningCommand } from './buildingCommands';
 
 export type BuildingSelection =
   | { kind: 'wall'; id: string }
@@ -21,6 +22,7 @@ type BuildingEditorState = {
   buildFromReviewedCad(document: CadDocument, projectName: string, reviewed: ReviewedCandidate[]): void;
   select(selection: BuildingSelection): void;
   updateWall(wallId: string, patch: Partial<Pick<ArchitecturalWall, 'start' | 'end' | 'thickness' | 'height' | 'wallType'>>): void;
+  updateOpening(openingId: string, patch: Partial<Pick<WallOpening, 'offsetFromWallStart' | 'width' | 'height' | 'sillHeight' | 'subtype'>>): void;
   undo(): void;
   redo(): void;
   clear(): void;
@@ -74,7 +76,46 @@ export const useBuildingEditorStore = create<BuildingEditorState>((set, get) => 
       ...patch,
       lineage: { ...before.lineage, validationState: 'modified' },
     };
+    const hosted = current.openings.filter(opening => opening.hostWallId === wallId);
+    const issues = hosted.flatMap(opening => validateHostedOpening(opening, after).map(issue => `${opening.id}: ${issue}`));
+    if (issues.length) {
+      set({ error: `Wall edit would invalidate hosted openings: ${issues.join(' ')}` });
+      return;
+    }
     const command = new UpdateArchitecturalWallCommand(before, after, describePatch(patch));
+    const model = history.execute(current, command);
+    set({ model, error: null, canUndo: history.canUndo, canRedo: history.canRedo });
+  },
+
+  updateOpening: (openingId, patch) => {
+    const current = get().model;
+    if (!current) return;
+    const before = current.openings.find(opening => opening.id === openingId);
+    if (!before) return;
+    const hostWall = current.walls.find(wall => wall.id === before.hostWallId);
+    if (!hostWall) {
+      set({ error: `Opening ${openingId} references missing host wall ${before.hostWallId}.` });
+      return;
+    }
+    const after: WallOpening = {
+      ...before,
+      ...patch,
+      lineage: { ...before.lineage, validationState: 'modified' },
+    };
+    const issues = validateHostedOpening(after, hostWall);
+    if (issues.length) {
+      set({ error: `Opening edit is invalid: ${issues.join(' ')}` });
+      return;
+    }
+    const siblings = current.openings.filter(opening => opening.hostWallId === before.hostWallId && opening.id !== openingId);
+    const start = after.offsetFromWallStart;
+    const end = start + after.width;
+    const overlap = siblings.find(opening => start < opening.offsetFromWallStart + opening.width && end > opening.offsetFromWallStart);
+    if (overlap) {
+      set({ error: `Opening edit overlaps ${overlap.id}.` });
+      return;
+    }
+    const command = new UpdateWallOpeningCommand(before, after, describeOpeningPatch(patch));
     const model = history.execute(current, command);
     set({ model, error: null, canUndo: history.canUndo, canRedo: history.canRedo });
   },
@@ -82,13 +123,13 @@ export const useBuildingEditorStore = create<BuildingEditorState>((set, get) => 
   undo: () => {
     const current = get().model;
     if (!current) return;
-    set({ model: history.undo(current), canUndo: history.canUndo, canRedo: history.canRedo });
+    set({ model: history.undo(current), error: null, canUndo: history.canUndo, canRedo: history.canRedo });
   },
 
   redo: () => {
     const current = get().model;
     if (!current) return;
-    set({ model: history.redo(current), canUndo: history.canUndo, canRedo: history.canRedo });
+    set({ model: history.redo(current), error: null, canUndo: history.canUndo, canRedo: history.canRedo });
   },
 
   clear: () => {
@@ -107,4 +148,12 @@ function describePatch(patch: Partial<Pick<ArchitecturalWall, 'start' | 'end' | 
   if (patch.height != null) return 'Change wall height';
   if (patch.wallType != null) return 'Change wall type';
   return 'Update wall';
+}
+
+function describeOpeningPatch(patch: Partial<Pick<WallOpening, 'offsetFromWallStart' | 'width' | 'height' | 'sillHeight' | 'subtype'>>) {
+  if (patch.offsetFromWallStart != null) return 'Move opening';
+  if (patch.width != null || patch.height != null) return 'Resize opening';
+  if (patch.sillHeight != null) return 'Change sill height';
+  if (patch.subtype != null) return 'Change opening subtype';
+  return 'Update opening';
 }
