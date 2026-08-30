@@ -10,3 +10,4 @@ obj/
 .vs/
 .DS_Store
 coverage/
+.archit-data/
