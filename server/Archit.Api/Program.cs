@@ -39,11 +39,14 @@ builder.Services.AddSingleton<IExportJobRepository, LocalExportJobRepository>();
 builder.Services.AddSingleton<IExportArtifactStore, LocalExportArtifactStore>();
 builder.Services.AddHostedService<ExportWorker>();
 builder.Services.AddConfiguredPersistence(builder.Configuration);
+builder.Services.AddConfiguredAuthentication(builder.Configuration);
 
 var app = builder.Build();
 app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "Archit.Api" }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "Archit.Api" })).AllowAnonymous();
 
 app.MapGet("/api/cad/provider", (ICadImportProvider provider) => Results.Ok(new
 {
