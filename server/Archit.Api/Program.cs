@@ -35,6 +35,8 @@ builder.Services.AddSingleton<ICollaborationRepository, LocalCollaborationReposi
 builder.Services.AddSingleton<IProjectEventBroadcaster, SignalRProjectEventBroadcaster>();
 builder.Services.AddSingleton<ITenantRepository, LocalTenantRepository>();
 builder.Services.AddSingleton<IExportJobRepository, LocalExportJobRepository>();
+builder.Services.AddSingleton<IExportArtifactStore, LocalExportArtifactStore>();
+builder.Services.AddHostedService<ExportWorker>();
 
 var app = builder.Build();
 app.UseCors();
@@ -234,6 +236,8 @@ app.MapGet("/api/tenants/{tenantId:guid}/memberships/{userId}", async (Guid tena
 
 app.MapPost("/api/projects/{projectId:guid}/exports", async (Guid projectId, CreateExportRequest request, IExportJobRepository repository, CancellationToken cancellationToken) =>
 {
+    if (!string.Equals(request.Format,"json",StringComparison.OrdinalIgnoreCase))
+        return Results.BadRequest(new { error = $"Server-side export format '{request.Format}' is not configured. JSON is currently available; DWG/DXF/IFC require format-specific providers." });
     try
     {
         var job = await repository.CreateAsync(projectId, request, cancellationToken);
@@ -249,6 +253,19 @@ app.MapGet("/api/exports/{jobId:guid}", async (Guid jobId, IExportJobRepository 
 {
     var job = await repository.GetAsync(jobId, cancellationToken);
     return job is null ? Results.NotFound() : Results.Ok(job);
+});
+
+app.MapGet("/api/exports/{jobId:guid}/artifact", async (Guid jobId, IExportJobRepository repository, IExportArtifactStore artifacts, CancellationToken cancellationToken) =>
+{
+    var job = await repository.GetAsync(jobId, cancellationToken);
+    if (job is null) return Results.NotFound();
+    if (job.Status != "completed" || string.IsNullOrWhiteSpace(job.ArtifactPath)) return Results.Conflict(new { error = "Export artifact is not ready." });
+    try
+    {
+        var stream = await artifacts.OpenAsync(job, cancellationToken);
+        return Results.Stream(stream,"application/json",Path.GetFileName(job.ArtifactPath));
+    }
+    catch (FileNotFoundException) { return Results.NotFound(); }
 });
 
 app.MapHub<ProjectHub>("/hubs/projects");
