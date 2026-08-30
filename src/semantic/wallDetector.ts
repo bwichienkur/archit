@@ -1,4 +1,5 @@
-import type { CadDocument, CadEntity, CadPoint } from '../cad/types';
+import type { CadDocument, CadEntity, CadPoint, CadUnits } from '../cad/types';
+import { convertLength, type LengthUnit } from '../units/architectural';
 import type { WallCandidate } from './types';
 
 type Segment = { entity: CadEntity; a: CadPoint; b: CadPoint };
@@ -44,12 +45,10 @@ function overlapRatio(a: Segment, b: Segment) {
   if (len === 0) return 0;
   const ux = (a.b.x - a.a.x) / len;
   const uy = (a.b.y - a.a.y) / len;
-  const a0 = 0;
-  const a1 = len;
   const b0 = projectScalar(b.a, a.a, ux, uy);
   const b1 = projectScalar(b.b, a.a, ux, uy);
-  const lo = Math.max(a0, Math.min(b0, b1));
-  const hi = Math.min(a1, Math.max(b0, b1));
+  const lo = Math.max(0, Math.min(b0, b1));
+  const hi = Math.min(len, Math.max(b0, b1));
   return Math.max(0, hi - lo) / Math.min(len, length(b));
 }
 
@@ -62,17 +61,9 @@ export type WallDetectionOptions = {
   defaultHeight: number;
 };
 
-const DEFAULTS: WallDetectionOptions = {
-  minLength: 24,
-  minThickness: 3,
-  maxThickness: 16,
-  angleToleranceDegrees: 1,
-  minOverlapRatio: 0.65,
-  defaultHeight: 120,
-};
-
 export function detectWallCandidates(document: CadDocument, options: Partial<WallDetectionOptions> = {}): { candidates: WallCandidate[]; warnings: string[] } {
-  const config = { ...DEFAULTS, ...options };
+  const defaults = defaultsForDrawingUnits(document.drawingUnits);
+  const config = { ...defaults, ...options };
   const segments = document.entities.map(toSegment).filter((x): x is Segment => !!x).filter(x => length(x) >= config.minLength);
   const consumed = new Set<string>();
   const candidates: WallCandidate[] = [];
@@ -100,7 +91,7 @@ export function detectWallCandidates(document: CadDocument, options: Partial<Wal
     const am = midpoint(a);
     const offsetX = (bm.x - am.x) / 2;
     const offsetY = (bm.y - am.y) / 2;
-    const confidence = Math.min(0.98, 0.55 + best.overlap * 0.35 + (a.entity.layerId === best.segment.entity.layerId ? 0.08 : 0));
+    const confidence = Math.min(0.98, 0.55 + best.overlap * 0.35 + 0.08);
     candidates.push({
       id: `wall-candidate-${candidates.length + 1}`,
       kind: 'wall',
@@ -117,8 +108,30 @@ export function detectWallCandidates(document: CadDocument, options: Partial<Wal
     });
   }
 
+  const warnings: string[] = [];
+  if (document.drawingUnits === 'unitless') {
+    warnings.push('Wall detection used raw unitless thresholds. Confirm drawing units before accepting candidates into the building model.');
+  }
+  if (candidates.length === 0) warnings.push('No wall candidates met deterministic parallel-line thresholds.');
+  return { candidates, warnings };
+}
+
+function defaultsForDrawingUnits(units: CadUnits): WallDetectionOptions {
+  const base: WallDetectionOptions = {
+    minLength: 24,
+    minThickness: 3,
+    maxThickness: 16,
+    angleToleranceDegrees: 1,
+    minOverlapRatio: 0.65,
+    defaultHeight: 120,
+  };
+  if (units === 'unitless') return base;
+  const target = units as LengthUnit;
   return {
-    candidates,
-    warnings: candidates.length === 0 ? ['No wall candidates met deterministic parallel-line thresholds.'] : [],
+    ...base,
+    minLength: convertLength(24, 'inches', target),
+    minThickness: convertLength(3, 'inches', target),
+    maxThickness: convertLength(16, 'inches', target),
+    defaultHeight: convertLength(120, 'inches', target),
   };
 }
