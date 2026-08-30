@@ -1,3 +1,6 @@
+using System.Text.Json;
+using Archit.Api.Projects;
+
 namespace Archit.Api.Cad;
 
 public sealed class CadImportWorker(
@@ -5,6 +8,7 @@ public sealed class CadImportWorker(
     ICadArtifactStore artifacts,
     ICadImportProvider provider,
     ICadImportJobStore jobs,
+    IProjectRepository projects,
     IConfiguration configuration,
     ILogger<CadImportWorker> logger) : BackgroundService
 {
@@ -45,6 +49,7 @@ public sealed class CadImportWorker(
 
                 var result = await importTask;
                 await artifacts.SaveResultsAsync(jobId, result.Document, result.Validation, stoppingToken);
+                await LinkImportRevisionAsync(processing,result.Document,result.Validation,stoppingToken);
                 await jobs.SaveAsync(processing with
                 {
                     Status = "completed",
@@ -65,6 +70,44 @@ public sealed class CadImportWorker(
                 await jobs.SaveAsync(job with { Status = "failed", Progress = 0, Error = ex.Message }, stoppingToken);
             }
         }
+    }
+
+    private async Task LinkImportRevisionAsync(CadImportJob job,NormalizedCadDocument document,CadImportValidation validation,CancellationToken cancellationToken)
+    {
+        if(job.ProjectId is not Guid projectId)return;
+        var existing=await projects.ListRevisionsAsync(projectId,cancellationToken);
+        if(existing.Any(revision=>revision.SourceImportId==job.Id))return;
+
+        var manifest=JsonSerializer.SerializeToElement(new
+        {
+            schemaVersion=1,
+            kind="cad-import",
+            importJobId=job.Id,
+            sourceFileName=document.SourceFileName,
+            sourceSha256=document.SourceSha256,
+            sourceCadVersion=document.SourceCadVersion,
+            drawingUnits=document.DrawingUnits,
+            unitScaleToMeters=document.UnitScaleToMeters,
+            entityCount=document.Entities.Count,
+            unsupportedEntityCount=validation.UnsupportedEntityCount,
+            bounds=document.Bounds,
+            validation=new
+            {
+                validation.Passed,
+                validation.SourceEntityCount,
+                validation.NormalizedEntityCount,
+                validation.BoundsDelta,
+                issueCount=validation.Issues.Count,
+                warningCount=validation.Warnings.Count,
+            }
+        });
+        await projects.AddRevisionAsync(projectId,new CreateRevisionRequest(
+            ParentRevisionId:null,
+            Kind:"import",
+            CreatedBy:"system:cad-import",
+            SourceImportId:job.Id,
+            Model:manifest,
+            Note:$"Imported {document.SourceFileName}"),cancellationToken);
     }
 
     private async Task RecoverInterruptedJobsAsync(CancellationToken cancellationToken)
