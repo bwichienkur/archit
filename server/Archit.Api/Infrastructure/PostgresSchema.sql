@@ -46,6 +46,12 @@ CREATE TABLE IF NOT EXISTS cad_import_jobs (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS cad_import_queue (
+    job_id uuid PRIMARY KEY REFERENCES cad_import_jobs(id) ON DELETE CASCADE,
+    enqueued_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_cad_import_queue_enqueued ON cad_import_queue(enqueued_at, job_id);
+
 CREATE TABLE IF NOT EXISTS catalog_products (
     id uuid PRIMARY KEY,
     external_id text NOT NULL UNIQUE,
