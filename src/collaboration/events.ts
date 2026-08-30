@@ -1,4 +1,4 @@
-export type CollaborationRole = 'architect'|'builder'|'designer'|'customer'|'admin';
+export type CollaborationRole = 'owner'|'admin'|'architect'|'builder'|'designer'|'customer'|'viewer';
 export type CollaborationEventType = 'comment-created'|'comment-resolved'|'object-changed'|'revision-created'|'approval-requested'|'approval-recorded'|'selection-changed';
 
 export type ObjectReference = { kind:'wall'|'opening'|'room'|'stair'|'roof'|'cabinet'|'fixture'|'selection'|'project'; id:string };
