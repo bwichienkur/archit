@@ -9,4 +9,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.30" />
     <PackageReference Include="Npgsql" Version="8.0.9" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Infrastructure/PostgresSchema.sql" />
+  </ItemGroup>
 </Project>
