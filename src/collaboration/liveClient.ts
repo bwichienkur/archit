@@ -1,10 +1,13 @@
 import { HubConnectionBuilder, HubConnectionState, LogLevel, type HubConnection } from '@microsoft/signalr';
-import type { CollaborationComment, CollaborationEvent, CollaborationRole } from './events';
+import type { CollaborationComment, CollaborationEvent, CollaborationEventType, CollaborationRole, ObjectReference } from './events';
 
 export type LivePresence={projectId:string;connectionId:string;userId:string;displayName:string;role:string;selectedKind:string|null;selectedId:string|null;lastSeenAt:string};
 export type LiveEditLease={projectId:string;objectKind:string;objectId:string;userId:string;connectionId:string;acquiredAt:string;expiresAt:string};
 export type CollaborationLiveHandlers={onPresence?(items:LivePresence[]):void;onLeases?(items:LiveEditLease[]):void;onProjectEvent?(event:CollaborationEvent):void;onCommentCreated?(comment:CollaborationComment):void;onCommentResolved?(comment:CollaborationComment):void;onReconnecting?(error?:Error):void;onReconnected?():void;onClosed?(error?:Error):void};
 export type LiveAccessTokenFactory=()=>string|Promise<string>;
+
+type LiveEventDto={id:string;projectId:string;revisionId:string|null;actorId:string;actorRole:CollaborationRole;type:CollaborationEventType;targetKind:string|null;targetId:string|null;createdAt:string;payload:Record<string,string|number|boolean|null>};
+type LiveCommentDto={id:string;projectId:string;revisionId:string|null;authorId:string;authorRole:CollaborationRole;targetKind:string;targetId:string;body:string;createdAt:string;resolvedAt:string|null;resolvedBy:string|null};
 
 export class ProjectLiveClient{
   private readonly connection:HubConnection;
@@ -17,9 +20,9 @@ export class ProjectLiveClient{
     this.connection=builder.withAutomaticReconnect([0,1000,3000,10000]).configureLogging(LogLevel.Warning).build();
     this.connection.on('presenceChanged',(items:LivePresence[])=>handlers.onPresence?.(items));
     this.connection.on('editLeasesChanged',(items:LiveEditLease[])=>handlers.onLeases?.(items));
-    this.connection.on('projectEvent',(event:CollaborationEvent)=>handlers.onProjectEvent?.(event));
-    this.connection.on('commentCreated',(comment:CollaborationComment)=>handlers.onCommentCreated?.(comment));
-    this.connection.on('commentResolved',(comment:CollaborationComment)=>handlers.onCommentResolved?.(comment));
+    this.connection.on('projectEvent',(event:LiveEventDto)=>handlers.onProjectEvent?.(toEvent(event)));
+    this.connection.on('commentCreated',(comment:LiveCommentDto)=>handlers.onCommentCreated?.(toComment(comment)));
+    this.connection.on('commentResolved',(comment:LiveCommentDto)=>handlers.onCommentResolved?.(toComment(comment)));
     this.connection.onreconnecting(error=>handlers.onReconnecting?.(error??undefined));
     this.connection.onreconnected(async()=>{handlers.onReconnected?.();if(this.joined)await this.invokeJoin(this.joined);});
     this.connection.onclose(error=>handlers.onClosed?.(error??undefined));
@@ -35,3 +38,6 @@ export class ProjectLiveClient{
   private requireJoined(){if(!this.joined)throw new Error('Join a project before using live collaboration.');if(this.connection.state!==HubConnectionState.Connected)throw new Error('Live collaboration connection is not connected.');return this.joined;}
   private invokeJoin(joined:{projectId:string;userId:string;displayName:string;role:CollaborationRole}){return this.connection.invoke('JoinProject',joined.projectId,joined.userId,joined.displayName,joined.role);}
 }
+
+function toEvent(dto:LiveEventDto):CollaborationEvent{return{id:dto.id,projectId:dto.projectId,revisionId:dto.revisionId??undefined,actorId:dto.actorId,actorRole:dto.actorRole,type:dto.type,target:dto.targetKind&&dto.targetId?{kind:dto.targetKind as ObjectReference['kind'],id:dto.targetId}:undefined,timestamp:dto.createdAt,payload:dto.payload};}
+function toComment(dto:LiveCommentDto):CollaborationComment{return{id:dto.id,projectId:dto.projectId,revisionId:dto.revisionId??undefined,authorId:dto.authorId,authorRole:dto.authorRole,target:{kind:dto.targetKind as ObjectReference['kind'],id:dto.targetId},body:dto.body,createdAt:dto.createdAt,resolvedAt:dto.resolvedAt??undefined,resolvedBy:dto.resolvedBy??undefined};}
