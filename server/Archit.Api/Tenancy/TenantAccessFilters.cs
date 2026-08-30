@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using Archit.Api.Collaboration;
+using Archit.Api.Exports;
 using Archit.Api.Infrastructure;
 using Archit.Api.Projects;
 
@@ -45,7 +47,30 @@ public sealed class ProjectPermissionFilter(string permission) : IEndpointFilter
         if(!Guid.TryParse(context.HttpContext.Request.RouteValues["projectId"]?.ToString(),out var projectId))return Results.BadRequest(new{error="Project route ID is invalid."});
         var access=context.HttpContext.RequestServices.GetRequiredService<TenantAccessService>();
         var decision=await access.CheckProjectAsync(context.HttpContext,projectId,permission,context.HttpContext.RequestAborted);
-        return decision.Allowed?await next(context):decision.ToResult();
+        if(!decision.Allowed)return decision.ToResult();
+        if(access.AuthEnabled&&decision.Membership is not null)
+        {
+            var userId=TenantAccessService.Subject(context.HttpContext.User);
+            if(string.IsNullOrWhiteSpace(userId))return Results.Unauthorized();
+            NormalizeAuditArguments(context,userId,decision.Membership.Role);
+        }
+        return await next(context);
+    }
+
+    private static void NormalizeAuditArguments(EndpointFilterInvocationContext context,string userId,string role)
+    {
+        for(var index=0;index<context.Arguments.Count;index++)
+        {
+            context.Arguments[index]=context.Arguments[index] switch
+            {
+                CreateRevisionRequest request=>request with{CreatedBy=userId},
+                CreateExportRequest request=>request with{RequestedBy=userId},
+                CreateCollaborationEventRequest request=>request with{ActorId=userId,ActorRole=role},
+                CreateCommentRequest request=>request with{AuthorId=userId,AuthorRole=role},
+                ResolveCommentRequest request=>request with{ResolvedBy=userId},
+                var argument=>argument
+            };
+        }
     }
 }
 
