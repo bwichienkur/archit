@@ -20,7 +20,7 @@ public sealed class AzureBlobCadArtifactStore : ICadArtifactStore
     }
     public async Task<Stream> OpenSourceAsync(Guid jobId,CancellationToken cancellationToken)
     {
-        await foreach(var blob in _container.GetBlobsAsync(prefix:$"{jobId:N}/source",cancellationToken:cancellationToken)){var response=await _container.GetBlobClient(blob.Name).DownloadStreamingAsync(cancellationToken:cancellationToken);return response.Value.Content;}throw new FileNotFoundException($"Source artifact for CAD import {jobId} was not found.");
+        await foreach(var blob in _container.GetBlobsAsync(BlobTraits.None,BlobStates.None,$"{jobId:N}/source",cancellationToken)){var response=await _container.GetBlobClient(blob.Name).DownloadStreamingAsync(cancellationToken:cancellationToken);return response.Value.Content;}throw new FileNotFoundException($"Source artifact for CAD import {jobId} was not found.");
     }
     public async Task SaveResultsAsync(Guid jobId,NormalizedCadDocument document,CadImportValidation validation,CancellationToken cancellationToken)
     {
