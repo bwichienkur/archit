@@ -39,7 +39,8 @@ export function ProjectWorkspace(){
     setOpening(summary.project.id);setError(null);
     try{
       setActiveProject(summary.project);
-      useProjectPersistenceStore.setState({projectId:summary.project.id,revisionId:summary.latestBim?.id??summary.revisions[0]?.id??null,error:null});
+      const revisionHead=summary.revisions[0]?.id??null;
+      useProjectPersistenceStore.setState({projectId:summary.project.id,revisionId:revisionHead,error:null});
       const editor=useBuildingEditorStore.getState();
       editor.clear();
       if(summary.latestBim&&isBuildingModelV2(summary.latestBim.model)){
