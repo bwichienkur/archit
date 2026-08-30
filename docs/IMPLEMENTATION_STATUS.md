@@ -14,9 +14,9 @@ DWG ingestion -> normalized immutable CAD -> fidelity validation -> semantic ext
 | 4 | Semantic recognition | Started | Unit-aware wall detection, closed-room topology, thickness-aware interior room faces, deterministic door/window recognition from metadata/block names, candidate evidence/confidence, review states, and explicit acceptance. |
 | 5 | Geometry kernel | Started | Core geometry, snapping/intersections, endpoint topology, bounded-face detection, thickness-aware face offsets and regression tests. |
 | 6 | Parametric walls | Started | Architectural wall domain, endpoint join graph, join classification, source-aligned V2 editing, hosted openings and dynamic room recalculation. Wall assemblies remain. |
-| 7 | Doors/windows | Started | Deterministic recognition, strict wall hosting, 2D door/window symbols, editable offsets/dimensions/sills, overlap/host validation, undo/redo, and true 3D wall void generation are implemented. Handing/swing inference and richer families remain. |
-| 8 | Room engine | Started | Closed topology now resolves thickness-aware interior wall faces when unambiguous; V2 room overlay/inspection and inferred-room recalculation after wall edits are wired. Labels/manual boundary editing remain. |
-| 9 | Full 3D generation | Started | V2 walls generate in Three.js using source proportions and are decomposed around hosted door/window voids. Floors, ceilings, roofs, stairs and fixtures remain. |
+| 7 | Doors/windows | Started | Deterministic recognition, strict wall hosting, 2D door/window symbols, editable offsets/dimensions/sills, overlap/host validation, undo/redo, true 3D wall void generation, and deterministic opening schedules are implemented. Handing/swing inference and richer families remain. |
+| 8 | Room engine | Started | Closed topology resolves thickness-aware interior wall faces when unambiguous; V2 room overlay/inspection, inferred-room recalculation and derived floor/ceiling surface geometry are implemented. Labels/manual boundary editing remain. |
+| 9 | Full 3D generation | Started | V2 walls generate in Three.js using source proportions and are decomposed around hosted door/window voids. Floor/ceiling surface geometry is derived; renderer integration, roofs, stairs and fixtures remain. |
 | 10 | Professional editing tools | Started | CAD/BIM selection, layer isolation, wall/opening property edits, snapping foundation and V2 command undo/redo exist; full CAD toolset remains. |
 | 11 | Undo/redo/revisions | Started | BuildingModelV2 wall/opening commands support undo/redo; editor Save creates durable local projects/revisions. Diff/branch UI remains. |
 | 12 | Multi-story | Started | Level/elevation domain exists; UI and vertical relationships remain. |
@@ -35,7 +35,7 @@ DWG ingestion -> normalized immutable CAD -> fidelity validation -> semantic ext
 | 25 | Selection management | Started | Draft/customer-approved/builder-approved/locked configuration states exist; workflow UI/audit remains. |
 | 26 | Construction output | Planned | Export contracts should follow model stabilization. |
 | 27 | Annotation/dimensioning | Started | Imported normalized dimensions/leaders/text render; authoring/editing engine remains. |
-| 28 | Schedules | Planned | Opening/room topology is now stable enough to begin schedule contracts next. |
+| 28 | Schedules | Started | Deterministic opening schedule generation includes marks, host/level, dimensions, sill, subtype, handing/swing and CAD lineage. UI/export remains. |
 | 29 | Collaboration | Planned | Backend boundary selected; SignalR/event model pending. |
 | 30 | SaaS/tenancy | Started | Durable local project/revision repository, restart-recoverable CAD job store and production CORS restrictions exist; Postgres, auth and tenant isolation remain. |
 | 31 | Builder price books | Started | Effective-dated material/labor/markup/allowance overrides with catalog fallback and tests. |
@@ -47,7 +47,7 @@ DWG ingestion -> normalized immutable CAD -> fidelity validation -> semantic ext
 | 37 | Walkthrough/presentation | Started | Orbit/perspective foundation exists; first-person navigation pending. |
 | 38 | Mobile/tablet review | Started | Responsive shell exists; dedicated review UX pending. |
 | 39 | Performance hardening | Started | Async/recoverable CAD jobs and architectural separation exist; spatial indexes/BVH/Web Workers remain. |
-| 40 | Reliability/regression | Started | CI plus geometry/takeoff/validation/semantic/topology/wall/opening/room/unit/configurator/price-book tests exist; production DWG corpus remains. |
+| 40 | Reliability/regression | Started | CI plus geometry/takeoff/validation/semantic/topology/wall/opening/room/schedule/unit/configurator/price-book tests exist; production DWG corpus remains. |
 
 ## Current sprint — completed
 
@@ -64,24 +64,25 @@ DWG ingestion -> normalized immutable CAD -> fidelity validation -> semantic ext
 11. Strict host-wall matching and accepted-opening validation.
 12. 2D door/window symbols and actual 3D wall voids via wall-solid decomposition.
 13. Thickness-aware interior room faces with centerline fallback only when offset joins are ambiguous.
-14. Architectural unit parsing/formatting/conversion.
-15. Builder compatibility, configuration sessions and effective price books.
-16. Durable local project/model revisions and functional editor Save.
-17. Expanded normalized CAD rendering for major 2D entity families and block instances.
-18. Native-worker SHA/schema/integrity checks and timeout protection.
-19. CAD imports moved out of the HTTP lifecycle into queue + background worker + durable artifact/job storage with restart recovery.
-20. CI runs for every `feature/**` branch.
+14. Deterministic opening schedules and derived room floor/ceiling geometry.
+15. Architectural unit parsing/formatting/conversion.
+16. Builder compatibility, configuration sessions and effective price books.
+17. Durable local project/model revisions and functional editor Save.
+18. Expanded normalized CAD rendering for major 2D entity families and block instances.
+19. Native-worker SHA/schema/integrity checks and timeout protection.
+20. CAD imports moved out of the HTTP lifecycle into queue + background worker + durable artifact/job storage with restart recovery.
+21. CI runs for every `feature/**` branch.
 
 ## Next execution order
 
-1. Add richer door/window family metadata, handing/swing editing and opening schedules.
-2. Add floor/ceiling generation from resolved room faces.
+1. Wire floor/ceiling surfaces into the 3D renderer and add opening schedule UI/export.
+2. Add richer door/window family metadata plus handing/swing editing.
 3. Add wall assemblies and join cleanup for finish/core layers.
 4. Add PostgreSQL repository and cloud object-storage adapters behind the existing persistence interfaces.
 5. Replace the in-memory queue with a production durable broker while retaining restart recovery semantics.
 6. Add catalog persistence and CSV/XLSX ingestion pipeline.
 7. Build builder configurator UI on top of compatibility/session/price-book core.
-8. Add schedules and vector export contracts for walls/openings/rooms.
+8. Add vector export contracts for walls/openings/rooms.
 9. Add first-person walkthrough and production PBR materials.
 10. Connect the licensed native DWG worker when SDK credentials/runtime are available.
 
