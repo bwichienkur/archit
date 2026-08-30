@@ -4,10 +4,13 @@ using Archit.Api.Infrastructure;
 
 namespace Archit.Api.Cad;
 
-public sealed class PostgresCadImportJobStore(IArchitDbConnectionFactory connections) : ICadImportJobStore
+public sealed class PostgresCadImportJobStore(
+    IArchitDbConnectionFactory connections,
+    IConfiguration configuration) : ICadImportJobStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private const string SelectColumns = "SELECT id,project_id,file_name,status,progress,error,document::text,validation::text FROM cad_import_jobs";
+    private readonly TimeSpan _processingStaleAfter = TimeSpan.FromSeconds(Math.Max(60,configuration.GetValue("CadImport:ProcessingStaleSeconds",120)));
 
     public async Task<CadImportJob?> GetAsync(Guid jobId,CancellationToken cancellationToken)
     {
@@ -61,7 +64,8 @@ public sealed class PostgresCadImportJobStore(IArchitDbConnectionFactory connect
     {
         await using var connection=await connections.OpenAsync(cancellationToken);
         await using var command=connection.CreateCommand();
-        command.CommandText=SelectColumns+" WHERE status IN ('queued','processing') ORDER BY updated_at,id";
+        command.CommandText=SelectColumns+" WHERE status='queued' OR (status='processing' AND updated_at < @staleBefore) ORDER BY updated_at,id";
+        Add(command,"staleBefore",DateTimeOffset.UtcNow-_processingStaleAfter);
         await using var reader=await command.ExecuteReaderAsync(cancellationToken);
         var items=new List<CadImportJob>();
         while(await reader.ReadAsync(cancellationToken)) items.Add(ReadJob(reader));
