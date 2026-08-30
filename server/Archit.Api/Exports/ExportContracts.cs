@@ -8,7 +8,7 @@ public interface IExportJobRepository
     Task<ExportJobRecord> CreateAsync(Guid projectId,CreateExportRequest request,CancellationToken cancellationToken);
     Task<ExportJobRecord?> GetAsync(Guid jobId,CancellationToken cancellationToken);
     Task<IReadOnlyList<ExportJobRecord>> ListAsync(Guid projectId,CancellationToken cancellationToken);
-    Task<IReadOnlyList<ExportJobRecord>> ListPendingAsync(CancellationToken cancellationToken);
+    Task<ExportJobRecord?> ClaimNextAsync(TimeSpan processingStaleAfter,CancellationToken cancellationToken);
     Task SaveAsync(ExportJobRecord job,CancellationToken cancellationToken);
 }
 
