@@ -1,4 +1,6 @@
 import { apiFetch } from '../auth/apiFetch';
+import { authConfigured } from '../auth/oidc';
+import { ensureActiveProject } from '../projects/activeProject';
 import type { CadDocument, CadImportValidation } from './types';
 
 export type CadImportJob = {
@@ -24,9 +26,15 @@ export class HttpCadImportGateway implements CadImportGateway {
   ) {}
 
   async upload(file: File, projectId: string | null = null, onProgress?: (job: CadImportJob) => void): Promise<CadImportJob> {
+    let effectiveProjectId=projectId;
+    if(!effectiveProjectId&&authConfigured()){
+      const projectName=file.name.replace(/\.dwg$/i,'').trim()||'Imported DWG';
+      effectiveProjectId=(await ensureActiveProject(projectName)).id;
+    }
+
     const body = new FormData();
     body.append('file', file);
-    if (projectId) body.append('projectId', projectId);
+    if (effectiveProjectId) body.append('projectId', effectiveProjectId);
     const response = await apiFetch(`${this.baseUrl}/api/cad/imports`, { method: 'POST', body });
     if (!response.ok) throw new Error(await readError(response));
     const queued = await response.json() as CadImportJob;
