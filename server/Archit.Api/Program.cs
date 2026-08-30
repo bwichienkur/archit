@@ -4,8 +4,14 @@ using System.Collections.Concurrent;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
     .AllowAnyHeader().AllowAnyMethod().SetIsOriginAllowed(_ => true)));
-builder.Services.AddSingleton<ICadImportProvider, UnconfiguredCadImportProvider>();
 builder.Services.AddSingleton<ConcurrentDictionary<Guid, CadImportJob>>();
+builder.Services.AddSingleton<ExternalCadImportProvider>();
+builder.Services.AddSingleton<UnconfiguredCadImportProvider>();
+builder.Services.AddSingleton<ICadImportProvider>(services =>
+{
+    var external = services.GetRequiredService<ExternalCadImportProvider>();
+    return external.IsConfigured ? external : services.GetRequiredService<UnconfiguredCadImportProvider>();
+});
 
 var app = builder.Build();
 app.UseCors();
@@ -48,7 +54,7 @@ app.MapPost("/api/cad/imports", async (
         var failed = queued with
         {
             Status = "failed",
-            Error = "No licensed DWG import provider is configured on the server."
+            Error = "No licensed DWG import provider is configured on the server. Set ARCHIT_CAD_IMPORTER_PATH to a native ODA/Autodesk worker executable."
         };
         jobs[id] = failed;
         return Results.Json(failed, statusCode: StatusCodes.Status503ServiceUnavailable);
