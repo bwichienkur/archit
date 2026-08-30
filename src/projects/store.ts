@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { currentAuthSession } from '../auth/oidc';
+import { ensureActiveProject, getActiveProject } from './activeProject';
 import { HttpProjectGateway } from './gateway';
 
 const gateway = new HttpProjectGateway();
+const initialProject = getActiveProject();
 
 type ProjectPersistenceState = {
   projectId: string | null;
@@ -15,7 +17,7 @@ type ProjectPersistenceState = {
 };
 
 export const useProjectPersistenceStore = create<ProjectPersistenceState>((set, get) => ({
-  projectId: null,
+  projectId: initialProject?.id ?? null,
   revisionId: null,
   saving: false,
   savedAt: null,
@@ -24,12 +26,7 @@ export const useProjectPersistenceStore = create<ProjectPersistenceState>((set, 
   ensureProject: async (projectName) => {
     const existing = get().projectId;
     if (existing) return existing;
-
-    const session = await currentAuthSession();
-    if (session.configured && !session.authenticated) throw new Error('Sign in before creating a project.');
-    if (session.configured && !session.tenantId) throw new Error('Authenticated account is missing a tenant identifier.');
-
-    const project = await gateway.createProject(projectName, session.tenantId);
+    const project = await ensureActiveProject(projectName);
     set({ projectId: project.id, error: null });
     return project.id;
   },
