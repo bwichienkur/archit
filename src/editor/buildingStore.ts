@@ -9,6 +9,7 @@ import { BuildingCommandHistory, UpdateArchitecturalWallCommand } from './buildi
 export type BuildingSelection =
   | { kind: 'wall'; id: string }
   | { kind: 'room'; id: string }
+  | { kind: 'opening'; id: string }
   | null;
 
 type BuildingEditorState = {
