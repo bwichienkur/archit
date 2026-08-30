@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS project_revisions (
     note text NULL
 );
 CREATE INDEX IF NOT EXISTS ix_project_revisions_project_created ON project_revisions(project_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_project_revisions_source_import ON project_revisions(project_id, source_import_id) WHERE source_import_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS cad_import_jobs (
     id uuid PRIMARY KEY,
