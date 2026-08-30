@@ -8,10 +8,10 @@ public sealed class LocalProjectRepository(IConfiguration configuration, IWebHos
     private readonly SemaphoreSlim _gate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = false };
 
-    public async Task<ProjectRecord> CreateAsync(string name, CancellationToken cancellationToken)
+    public async Task<ProjectRecord> CreateAsync(string name, Guid? tenantId, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        var project = new ProjectRecord(Guid.NewGuid(), name.Trim(), now, now);
+        var project = new ProjectRecord(Guid.NewGuid(), tenantId, name.Trim(), now, now);
         await _gate.WaitAsync(cancellationToken);
         try
         {
@@ -42,7 +42,7 @@ public sealed class LocalProjectRepository(IConfiguration configuration, IWebHos
                 var project = await ReadAsync<ProjectRecord>(path, cancellationToken);
                 if (project is not null) projects.Add(project);
             }
-            catch (JsonException) { /* corrupt project records are skipped rather than crashing list */ }
+            catch (JsonException) { }
         }
         return projects.OrderByDescending(project => project.UpdatedAt).ToArray();
     }
