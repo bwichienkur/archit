@@ -24,6 +24,7 @@ function baseModel(): BuildingModelV2 {
     projectId: 'p1',
     projectName: 'Test',
     units: 'imperial',
+    geometryUnits: 'feet',
     levels: [{ id: 'level:ground', name: 'Ground', elevation: 0, floorToFloorHeight: 10, defaultCeilingHeight: 9 }],
     walls: [
       wall('w1',{x:0,y:0},{x:10,y:0}), wall('w2',{x:10,y:0},{x:10,y:8}),
