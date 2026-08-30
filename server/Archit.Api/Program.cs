@@ -2,6 +2,7 @@ using Archit.Api.Cad;
 using Archit.Api.Catalog;
 using Archit.Api.Collaboration;
 using Archit.Api.Exports;
+using Archit.Api.Infrastructure;
 using Archit.Api.Projects;
 using Archit.Api.Tenancy;
 
@@ -37,6 +38,7 @@ builder.Services.AddSingleton<ITenantRepository, LocalTenantRepository>();
 builder.Services.AddSingleton<IExportJobRepository, LocalExportJobRepository>();
 builder.Services.AddSingleton<IExportArtifactStore, LocalExportArtifactStore>();
 builder.Services.AddHostedService<ExportWorker>();
+builder.Services.AddConfiguredPersistence(builder.Configuration);
 
 var app = builder.Build();
 app.UseCors();
