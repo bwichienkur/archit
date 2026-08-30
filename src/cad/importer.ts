@@ -1,3 +1,4 @@
+import { apiFetch } from '../auth/apiFetch';
 import type { CadDocument, CadImportValidation } from './types';
 
 export type CadImportJob = {
@@ -26,7 +27,7 @@ export class HttpCadImportGateway implements CadImportGateway {
     const body = new FormData();
     body.append('file', file);
     if (projectId) body.append('projectId', projectId);
-    const response = await fetch(`${this.baseUrl}/api/cad/imports`, { method: 'POST', body });
+    const response = await apiFetch(`${this.baseUrl}/api/cad/imports`, { method: 'POST', body });
     if (!response.ok) throw new Error(await readError(response));
     const queued = await response.json() as CadImportJob;
     onProgress?.(queued);
@@ -35,7 +36,7 @@ export class HttpCadImportGateway implements CadImportGateway {
   }
 
   async getJob(jobId: string): Promise<CadImportJob> {
-    const response = await fetch(`${this.baseUrl}/api/cad/imports/${encodeURIComponent(jobId)}`);
+    const response = await apiFetch(`${this.baseUrl}/api/cad/imports/${encodeURIComponent(jobId)}`);
     if (!response.ok) throw new Error(await readError(response));
     return response.json() as Promise<CadImportJob>;
   }
