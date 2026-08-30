@@ -1,5 +1,5 @@
 import type { CadDocument, CadEntity, CadPoint } from '../cad/types';
-import type { SemanticExtractionResult, WallCandidate } from './types';
+import type { WallCandidate } from './types';
 
 type Segment = { entity: CadEntity; a: CadPoint; b: CadPoint };
 
@@ -71,7 +71,7 @@ const DEFAULTS: WallDetectionOptions = {
   defaultHeight: 120,
 };
 
-export function detectWallCandidates(document: CadDocument, options: Partial<WallDetectionOptions> = {}): SemanticExtractionResult {
+export function detectWallCandidates(document: CadDocument, options: Partial<WallDetectionOptions> = {}): { candidates: WallCandidate[]; warnings: string[] } {
   const config = { ...DEFAULTS, ...options };
   const segments = document.entities.map(toSegment).filter((x): x is Segment => !!x).filter(x => length(x) >= config.minLength);
   const consumed = new Set<string>();
