@@ -11,11 +11,10 @@ export class ProjectLiveClient{
   private joined:{projectId:string;userId:string;displayName:string;role:CollaborationRole}|null=null;
   constructor(baseUrl=import.meta.env.VITE_API_URL??'http://localhost:5080',handlers:CollaborationLiveHandlers={},accessTokenFactory?:LiveAccessTokenFactory){
     const builder=new HubConnectionBuilder();
-    this.connection=builder
-      .withUrl(`${baseUrl.replace(/\/$/,'')}/hubs/projects`,accessTokenFactory?{accessTokenFactory}:undefined)
-      .withAutomaticReconnect([0,1000,3000,10000])
-      .configureLogging(LogLevel.Warning)
-      .build();
+    const url=`${baseUrl.replace(/\/$/,'')}/hubs/projects`;
+    if(accessTokenFactory)builder.withUrl(url,{accessTokenFactory});
+    else builder.withUrl(url);
+    this.connection=builder.withAutomaticReconnect([0,1000,3000,10000]).configureLogging(LogLevel.Warning).build();
     this.connection.on('presenceChanged',(items:LivePresence[])=>handlers.onPresence?.(items));
     this.connection.on('editLeasesChanged',(items:LiveEditLease[])=>handlers.onLeases?.(items));
     this.connection.on('projectEvent',(event:CollaborationEvent)=>handlers.onProjectEvent?.(event));
