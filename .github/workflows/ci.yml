@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, feature/cad-bim-foundation]
+    branches: [main, 'feature/**']
   pull_request:
     branches: [main]
 
