@@ -2,19 +2,21 @@ import { useMemo } from 'react';
 import type { BuildingModelV2 } from '../domain/building';
 import { decomposeWallSolids } from '../domain/wallSolids';
 import { RoomSurfaces3D, type SceneTransform2D } from './RoomSurfaces3D';
+import { RoofPlanes3D } from './RoofPlanes3D';
 
 export type BuildingModelScene3DProps = {
   model: BuildingModelV2;
   selectedId?: string | null;
   showFloors?: boolean;
   showCeilings?: boolean;
-  onSelect?(kind:'wall'|'room'|'stair'|'cabinet'|'fixture',id:string):void;
+  onSelect?(kind:'wall'|'room'|'stair'|'roof'|'cabinet'|'fixture',id:string):void;
 };
 
 export function BuildingModelScene3D({model,selectedId,showFloors=true,showCeilings=false,onSelect}:BuildingModelScene3DProps){
   const transform=useMemo(()=>sceneTransform(model),[model]);
   return <>
     <RoomSurfaces3D model={model} transform={transform} showFloors={showFloors} showCeilings={showCeilings} onSelectRoom={id=>onSelect?.('room',id)}/>
+    <RoofPlanes3D model={model} transform={transform} selectedId={selectedId} onSelect={id=>onSelect?.('roof',id)}/>
     {model.walls.flatMap(wall=>wallMeshes(model,wall,transform,selectedId,onSelect))}
     {model.stairs.flatMap(stair=>stairMeshes(stair,transform,selectedId,onSelect))}
     {model.cabinets.map(cabinet=><mesh key={cabinet.id} position={objectPosition(cabinet.origin,cabinet.height/2,transform)} rotation={[0,-cabinet.rotation,0]} onClick={event=>{event.stopPropagation();onSelect?.('cabinet',cabinet.id)}} castShadow><boxGeometry args={[cabinet.width*transform.scale,Math.max(cabinet.height*transform.scale,.02),cabinet.depth*transform.scale]}/><meshStandardMaterial color={selectedId===cabinet.id?'#d9a441':'#b7a48a'}/></mesh>)}
@@ -23,7 +25,7 @@ export function BuildingModelScene3D({model,selectedId,showFloors=true,showCeili
 }
 
 export function sceneTransform(model:BuildingModelV2):SceneTransform2D {
-  const points=[...model.walls.flatMap(wall=>[wall.start,wall.end]),...model.rooms.flatMap(room=>room.boundary),...model.cabinets.map(c=>c.origin),...model.fixtures.map(f=>f.origin)];
+  const points=[...model.walls.flatMap(wall=>[wall.start,wall.end]),...model.rooms.flatMap(room=>room.boundary),...model.roofPlanes.flatMap(plane=>plane.boundary),...model.cabinets.map(c=>c.origin),...model.fixtures.map(f=>f.origin)];
   if(points.length===0)return{centerX:0,centerY:0,scale:1};
   const xs=points.map(point=>point.x),ys=points.map(point=>point.y),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys),span=Math.max(maxX-minX,maxY-minY,1);
   return{centerX:(minX+maxX)/2,centerY:(minY+maxY)/2,scale:10/span};
