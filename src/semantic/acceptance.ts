@@ -86,6 +86,8 @@ function toHostedOpening(candidate: OpeningCandidate, walls: ArchitecturalWall[]
     height: candidate.height,
     sillHeight: candidate.kind === 'window' ? candidate.sillHeight ?? 0 : undefined,
     subtype: candidate.subtype,
+    handing: candidate.kind === 'door' ? candidate.handing : undefined,
+    swing: candidate.kind === 'door' ? candidate.swing : undefined,
     lineage: lineage(candidate),
   };
   const issues = validateHostedOpening(opening, wall);
