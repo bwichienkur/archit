@@ -3,7 +3,11 @@ using Archit.Api.Projects;
 using System.Collections.Concurrent;
 
 var builder = WebApplication.CreateBuilder(args);
-var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").GetChildren()
+    .Select(item => item.Value)
+    .Where(value => !string.IsNullOrWhiteSpace(value))
+    .Cast<string>()
+    .ToArray();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
 {
     policy.AllowAnyHeader().AllowAnyMethod();
