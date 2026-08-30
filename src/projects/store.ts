@@ -37,11 +37,12 @@ export const useProjectPersistenceStore = create<ProjectPersistenceState>((set, 
     try {
       const session = await currentAuthSession();
       const projectId = await get().ensureProject(projectName);
+      const persistedModel = bindProjectIdentity(model, projectId, projectName);
       const revision = await gateway.createRevision(projectId, {
         parentRevisionId: get().revisionId,
         kind: 'user-edit',
         createdBy: session.userId ?? 'local-user',
-        model,
+        model: persistedModel,
         note,
       });
       set({ revisionId: revision.id, savedAt: revision.createdAt, saving: false, error: null });
@@ -50,3 +51,10 @@ export const useProjectPersistenceStore = create<ProjectPersistenceState>((set, 
     }
   },
 }));
+
+function bindProjectIdentity<TModel>(model:TModel,projectId:string,projectName:string):TModel{
+  if(!model||typeof model!=='object'||Array.isArray(model))return model;
+  const record=model as Record<string,unknown>;
+  if(!('projectId' in record))return model;
+  return {...record,projectId,projectName:typeof record.projectName==='string'&&record.projectName.trim()?record.projectName:projectName} as TModel;
+}
