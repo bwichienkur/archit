@@ -1,5 +1,6 @@
 export type Point2 = { x: number; y: number };
 export type ValidationState = 'imported' | 'inferred' | 'confirmed' | 'modified';
+export type GeometryLengthUnit = 'inches' | 'feet' | 'millimeters' | 'centimeters' | 'meters' | 'unitless';
 
 export type SourceLineage = {
   sourceCadEntityIds: string[];
@@ -121,6 +122,8 @@ export type BuildingModelV2 = {
   projectId: string;
   projectName: string;
   units: 'imperial' | 'metric';
+  /** All geometric distances in this model use this unit. It is never inferred from display preferences. */
+  geometryUnits: GeometryLengthUnit;
   levels: Level[];
   walls: ArchitecturalWall[];
   openings: WallOpening[];
