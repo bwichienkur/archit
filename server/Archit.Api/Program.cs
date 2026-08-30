@@ -1,7 +1,9 @@
 using Archit.Api.Cad;
 using Archit.Api.Catalog;
 using Archit.Api.Collaboration;
+using Archit.Api.Exports;
 using Archit.Api.Projects;
+using Archit.Api.Tenancy;
 
 var builder = WebApplication.CreateBuilder(args);
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").GetChildren()
@@ -23,7 +25,7 @@ builder.Services.AddSingleton<ICadImportProvider>(services =>
     var external = services.GetRequiredService<ExternalCadImportProvider>();
     return external.IsConfigured ? external : services.GetRequiredService<UnconfiguredCadImportProvider>();
 });
-builder.Services.AddSingleton<ICadImportQueue, InMemoryCadImportQueue>();
+builder.Services.AddSingleton<ICadImportQueue, LocalDurableCadImportQueue>();
 builder.Services.AddSingleton<ICadArtifactStore, LocalCadArtifactStore>();
 builder.Services.AddSingleton<ICadImportJobStore, LocalCadImportJobStore>();
 builder.Services.AddHostedService<CadImportWorker>();
@@ -31,6 +33,8 @@ builder.Services.AddSingleton<IProjectRepository, LocalProjectRepository>();
 builder.Services.AddSingleton<ICatalogRepository, LocalCatalogRepository>();
 builder.Services.AddSingleton<ICollaborationRepository, LocalCollaborationRepository>();
 builder.Services.AddSingleton<IProjectEventBroadcaster, SignalRProjectEventBroadcaster>();
+builder.Services.AddSingleton<ITenantRepository, LocalTenantRepository>();
+builder.Services.AddSingleton<IExportJobRepository, LocalExportJobRepository>();
 
 var app = builder.Build();
 app.UseCors();
@@ -197,6 +201,54 @@ app.MapPost("/api/projects/{projectId:guid}/collaboration/comments/{commentId:gu
     }
     catch (KeyNotFoundException) { return Results.NotFound(); }
     catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapPost("/api/tenants", async (CreateTenantRequest request, ITenantRepository repository, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var tenant = await repository.CreateAsync(request.Name, cancellationToken);
+        return Results.Created($"/api/tenants/{tenant.Id}", tenant);
+    }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapGet("/api/tenants/{tenantId:guid}", async (Guid tenantId, ITenantRepository repository, CancellationToken cancellationToken) =>
+{
+    var tenant = await repository.GetAsync(tenantId, cancellationToken);
+    return tenant is null ? Results.NotFound() : Results.Ok(tenant);
+});
+
+app.MapPut("/api/tenants/{tenantId:guid}/memberships", async (Guid tenantId, UpsertMembershipRequest request, ITenantRepository repository, CancellationToken cancellationToken) =>
+{
+    try { return Results.Ok(await repository.UpsertMembershipAsync(tenantId, request, cancellationToken)); }
+    catch (KeyNotFoundException) { return Results.NotFound(); }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapGet("/api/tenants/{tenantId:guid}/memberships/{userId}", async (Guid tenantId, string userId, ITenantRepository repository, CancellationToken cancellationToken) =>
+{
+    var membership = await repository.GetMembershipAsync(tenantId, userId, cancellationToken);
+    return membership is null ? Results.NotFound() : Results.Ok(membership);
+});
+
+app.MapPost("/api/projects/{projectId:guid}/exports", async (Guid projectId, CreateExportRequest request, IExportJobRepository repository, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var job = await repository.CreateAsync(projectId, request, cancellationToken);
+        return Results.Accepted($"/api/exports/{job.Id}", job);
+    }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapGet("/api/projects/{projectId:guid}/exports", async (Guid projectId, IExportJobRepository repository, CancellationToken cancellationToken) =>
+    Results.Ok(await repository.ListAsync(projectId, cancellationToken)));
+
+app.MapGet("/api/exports/{jobId:guid}", async (Guid jobId, IExportJobRepository repository, CancellationToken cancellationToken) =>
+{
+    var job = await repository.GetAsync(jobId, cancellationToken);
+    return job is null ? Results.NotFound() : Results.Ok(job);
 });
 
 app.MapHub<ProjectHub>("/hubs/projects");
