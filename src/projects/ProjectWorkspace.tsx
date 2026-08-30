@@ -4,6 +4,7 @@ import { currentAuthSession } from '../auth/oidc';
 import { HttpCadImportGateway } from '../cad/importer';
 import { useCadStore } from '../cad/store';
 import { useBuildingEditorStore } from '../editor/buildingStore';
+import { useSemanticStore } from '../semantic/store';
 import { setActiveProject } from './activeProject';
 import { HttpProjectGateway, type ProjectRecord, type ProjectRevision } from './gateway';
 import { isBuildingModelV2 } from './modelGuard';
@@ -48,8 +49,10 @@ export function ProjectWorkspace(){
       useProjectPersistenceStore.setState({projectId:summary.project.id,revisionId:revisionHead,error:null});
 
       useCadStore.getState().clearCad();
+      useSemanticStore.getState().clear();
       if(importJob?.status==='completed'&&importJob.document){
         useCadStore.getState().setImportedCad(importJob.document,importJob.validation??null);
+        useSemanticStore.getState().runExtraction(importJob.document);
       }
 
       const editor=useBuildingEditorStore.getState();
