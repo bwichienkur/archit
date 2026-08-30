@@ -1,8 +1,12 @@
 import { Check, RotateCcw, X } from 'lucide-react';
+import { useCadStore } from '../cad/store';
+import { useBuildingEditorStore } from '../editor/buildingStore';
 import { useSemanticStore } from './store';
 
-export function SemanticReviewPanel() {
+export function SemanticReviewPanel({ projectName }: { projectName: string }) {
   const { candidates, warnings, selectedCandidateId, selectCandidate, acceptCandidate, rejectCandidate, resetCandidate, acceptAll } = useSemanticStore();
+  const document = useCadStore(state => state.document);
+  const { model, error, buildFromReviewedCad } = useBuildingEditorStore();
   const pending = candidates.filter(item => item.reviewState === 'pending').length;
   const accepted = candidates.filter(item => item.reviewState === 'accepted').length;
   const rejected = candidates.filter(item => item.reviewState === 'rejected').length;
@@ -23,6 +27,11 @@ export function SemanticReviewPanel() {
           {item.reviewState!=='pending' && <button title="Reset review" onClick={event=>{event.stopPropagation();resetCandidate(candidate.id)}}><RotateCcw size={12}/></button>}
         </div>
       </div>})}</div>
+    <button className="full promote-model" disabled={!document || accepted === 0} onClick={()=>document && buildFromReviewedCad(document, projectName, candidates)}>
+      {model ? 'Rebuild accepted BIM' : 'Create BIM from accepted'}
+    </button>
+    {model && <p className="promotion-status">Editable model: {model.walls.length} walls • {model.rooms.length} rooms</p>}
+    {error && <p className="semantic-error">{error}</p>}
     {warnings.length>0 && <div className="semantic-warnings">{warnings.map((warning,index)=><p key={`${warning}-${index}`}>{warning}</p>)}</div>}
   </section>;
 }
