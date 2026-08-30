@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createBuildingModelFromCandidates } from './acceptance';
-import type { RoomCandidate, WallCandidate } from './types';
+import type { OpeningCandidate, RoomCandidate, WallCandidate } from './types';
 
 const wall: WallCandidate = {
   id: 'candidate-wall-1',
@@ -20,6 +20,13 @@ const room: RoomCandidate = {
   validationState: 'inferred',
 };
 
+const door: OpeningCandidate = {
+  id: 'candidate-door-1', kind: 'door', center: { x: 5, y: 0 }, width: 3, height: 6.67,
+  hostWallCandidateId: wall.id, offsetFromWallStart: 3.5, subtype: 'single',
+  evidence: { sourceCadEntityIds: ['cad:door'], method: 'classified-block-name', confidence: 0.82 },
+  validationState: 'inferred',
+};
+
 describe('semantic acceptance', () => {
   it('only converts explicitly accepted candidates', () => {
     const model = createBuildingModelFromCandidates([wall, room], new Set([wall.id]), {
@@ -31,6 +38,24 @@ describe('semantic acceptance', () => {
     expect(model.geometryUnits).toBe('feet');
     expect(model.walls[0].lineage.sourceCadEntityIds).toEqual(['cad:a','cad:b']);
     expect(model.walls[0].lineage.validationState).toBe('confirmed');
+  });
+
+  it('promotes a hosted opening only when its wall is also accepted', () => {
+    const model = createBuildingModelFromCandidates([wall, door], new Set([wall.id, door.id]), {
+      projectId: 'p1', projectName: 'Test', units: 'imperial', geometryUnits: 'feet',
+    });
+
+    expect(model.openings).toHaveLength(1);
+    expect(model.openings[0].hostWallId).toBe(`wall:${wall.id}`);
+    expect(model.openings[0].offsetFromWallStart).toBeCloseTo(3.5);
+    expect(model.walls[0].openingIds).toEqual([`opening:${door.id}`]);
+    expect(model.openings[0].lineage.sourceCadEntityIds).toEqual(['cad:door']);
+  });
+
+  it('rejects an accepted opening whose host wall was not accepted', () => {
+    expect(() => createBuildingModelFromCandidates([wall, door], new Set([door.id]), {
+      projectId: 'p1', projectName: 'Test', units: 'imperial', geometryUnits: 'feet',
+    })).toThrow(/wall candidate that was not accepted/i);
   });
 
   it('preserves semantic evidence and converts level defaults into drawing units', () => {
