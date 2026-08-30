@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Grid, OrbitControls } from '@react-three/drei';
-import { Box, ClipboardList, Hammer, X } from 'lucide-react';
+import { Box, ClipboardList, Hammer, MessageSquare, X } from 'lucide-react';
 import { useBuildingEditorStore } from '../editor/buildingStore';
 import { BuildingModelScene3D } from '../editor/BuildingModelScene3D';
 import { BuilderConfiguratorPanel } from '../builder/BuilderConfiguratorPanel';
+import { CollaborationWorkspace } from '../collaboration/CollaborationWorkspace';
 import { ScheduleExportPanel } from '../export/ScheduleExportPanel';
 import { usePlatformWorkspaceStore, type PlatformPanel } from './store';
 
@@ -13,7 +14,12 @@ export function PlatformDock(){
   const {panel,setPanel,session,productsById,setSelectionStatus,removeTargetSelection}=usePlatformWorkspaceStore();
   const selectedId=selection?.id??null;
   const projectName=model?.projectName??'No BIM model';
-  const tabs: Array<{id:Exclude<PlatformPanel,'closed'>;label:string;icon:typeof Box}>=[{id:'3d',label:'Advanced 3D',icon:Box},{id:'builder',label:'Builder',icon:Hammer},{id:'schedules',label:'Schedules',icon:ClipboardList}];
+  const tabs: Array<{id:Exclude<PlatformPanel,'closed'>;label:string;icon:typeof Box}>=[
+    {id:'3d',label:'Advanced 3D',icon:Box},
+    {id:'builder',label:'Builder',icon:Hammer},
+    {id:'schedules',label:'Schedules',icon:ClipboardList},
+    {id:'collaboration',label:'Collaboration',icon:MessageSquare},
+  ];
   const download=useMemo(()=>downloadTextFile,[]);
 
   return <div className={`platform-dock ${panel==='closed'?'closed':'open'}`}>
@@ -23,6 +29,7 @@ export function PlatformDock(){
         {panel==='3d'&&<>{model?<div className="platform-3d"><Canvas camera={{position:[9,8,10],fov:45}} shadows><ambientLight intensity={1.2}/><directionalLight castShadow position={[8,12,7]} intensity={2}/><Grid args={[30,30]} cellSize={.5} sectionSize={2}/><BuildingModelScene3D model={model} selectedId={selectedId} showFloors showCeilings={false} onSelect={(kind,id)=>{if(kind==='wall'||kind==='room')select({kind,id});}}/><OrbitControls makeDefault/></Canvas></div>:<EmptyState text="Accept semantic candidates to create a BuildingModelV2 before opening the advanced 3D workspace."/>}</>}
         {panel==='builder'&&<BuilderConfiguratorPanel session={session} productsById={productsById} onStatusChange={setSelectionStatus} onRemove={removeTargetSelection}/>} 
         {panel==='schedules'&&<>{model?<ScheduleExportPanel model={model} onDownload={download}/>:<EmptyState text="A BuildingModelV2 is required before construction schedules can be generated."/>}</>}
+        {panel==='collaboration'&&<CollaborationWorkspace/>}
       </div>
     </section>}
   </div>;
