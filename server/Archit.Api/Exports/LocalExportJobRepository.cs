@@ -34,24 +34,38 @@ public sealed class LocalExportJobRepository : IExportJobRepository
         var dir=Path.Combine(_root,projectId.ToString("N"));if(!Directory.Exists(dir))return Array.Empty<ExportJobRecord>();return (await ReadDirectoryAsync(dir,cancellationToken)).OrderByDescending(job=>job.CreatedAt).ToArray();
     }
 
-    public async Task<IReadOnlyList<ExportJobRecord>> ListPendingAsync(CancellationToken cancellationToken)
+    public async Task<ExportJobRecord?> ClaimNextAsync(TimeSpan processingStaleAfter,CancellationToken cancellationToken)
     {
-        var list=new List<ExportJobRecord>();foreach(var dir in Directory.EnumerateDirectories(_root)){list.AddRange(await ReadDirectoryAsync(dir,cancellationToken));}return list.Where(job=>job.Status is "queued" or "processing").OrderBy(job=>job.CreatedAt).ToArray();
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var staleBefore=DateTimeOffset.UtcNow-processingStaleAfter;
+            var candidates=new List<ExportJobRecord>();
+            foreach(var dir in Directory.EnumerateDirectories(_root)) candidates.AddRange(await ReadDirectoryAsync(dir,cancellationToken));
+            var job=candidates.Where(item=>item.Status=="queued"||(item.Status=="processing"&&item.UpdatedAt<staleBefore)).OrderBy(item=>item.CreatedAt).ThenBy(item=>item.Id).FirstOrDefault();
+            if(job is null)return null;
+            var claimed=job with{Status="processing",Progress=25,UpdatedAt=DateTimeOffset.UtcNow,Error=null};
+            await WriteUnsafeAsync(claimed,cancellationToken);
+            return claimed;
+        }
+        finally{_gate.Release();}
     }
 
     public async Task SaveAsync(ExportJobRecord job,CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            var dir=Path.Combine(_root,job.ProjectId.ToString("N"));
-            Directory.CreateDirectory(dir);
-            var target=Path.Combine(dir,$"{job.Id:N}.json");
-            var temp=target+".tmp";
-            await File.WriteAllTextAsync(temp,JsonSerializer.Serialize(job,JsonOptions),cancellationToken);
-            File.Move(temp,target,overwrite:true);
-        }
+        try{await WriteUnsafeAsync(job,cancellationToken);}
         finally{_gate.Release();}
+    }
+
+    private async Task WriteUnsafeAsync(ExportJobRecord job,CancellationToken cancellationToken)
+    {
+        var dir=Path.Combine(_root,job.ProjectId.ToString("N"));
+        Directory.CreateDirectory(dir);
+        var target=Path.Combine(dir,$"{job.Id:N}.json");
+        var temp=target+".tmp";
+        await File.WriteAllTextAsync(temp,JsonSerializer.Serialize(job,JsonOptions),cancellationToken);
+        File.Move(temp,target,overwrite:true);
     }
 
     private static async Task<List<ExportJobRecord>> ReadDirectoryAsync(string dir,CancellationToken cancellationToken){var list=new List<ExportJobRecord>();foreach(var path in Directory.EnumerateFiles(dir,"*.json",SearchOption.TopDirectoryOnly)){await using var stream=File.OpenRead(path);var job=await JsonSerializer.DeserializeAsync<ExportJobRecord>(stream,JsonOptions,cancellationToken);if(job is not null)list.Add(job);}return list;}
