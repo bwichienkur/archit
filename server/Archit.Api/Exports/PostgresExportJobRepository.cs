@@ -12,7 +12,37 @@ public sealed class PostgresExportJobRepository(IArchitDbConnectionFactory conne
     }
     public async Task<ExportJobRecord?> GetAsync(Guid jobId,CancellationToken cancellationToken){await using var connection=await connections.OpenAsync(cancellationToken);await using var command=connection.CreateCommand();command.CommandText=Select+" WHERE id=@id";Add(command,"id",jobId);await using var reader=await command.ExecuteReaderAsync(cancellationToken);return await reader.ReadAsync(cancellationToken)?Read(reader):null;}
     public async Task<IReadOnlyList<ExportJobRecord>> ListAsync(Guid projectId,CancellationToken cancellationToken){await using var connection=await connections.OpenAsync(cancellationToken);await using var command=connection.CreateCommand();command.CommandText=Select+" WHERE project_id=@project ORDER BY created_at DESC";Add(command,"project",projectId);return await ReadAll(command,cancellationToken);}
-    public async Task<IReadOnlyList<ExportJobRecord>> ListPendingAsync(CancellationToken cancellationToken){await using var connection=await connections.OpenAsync(cancellationToken);await using var command=connection.CreateCommand();command.CommandText=Select+" WHERE status IN ('queued','processing') ORDER BY created_at";return await ReadAll(command,cancellationToken);}
+
+    public async Task<ExportJobRecord?> ClaimNextAsync(TimeSpan processingStaleAfter,CancellationToken cancellationToken)
+    {
+        var now=DateTimeOffset.UtcNow;
+        await using var connection=await connections.OpenAsync(cancellationToken);
+        await using var transaction=await connection.BeginTransactionAsync(cancellationToken);
+        await using var command=connection.CreateCommand();
+        command.Transaction=transaction;
+        command.CommandText="""
+WITH next_job AS (
+    SELECT id
+    FROM export_jobs
+    WHERE status='queued' OR (status='processing' AND updated_at < @stale_before)
+    ORDER BY created_at,id
+    FOR UPDATE SKIP LOCKED
+    LIMIT 1
+)
+UPDATE export_jobs AS job
+SET status='processing',progress=25,updated_at=@now,error=NULL
+FROM next_job
+WHERE job.id=next_job.id
+RETURNING job.id,job.project_id,job.revision_id,job.format,job.status,job.progress,job.requested_by,job.created_at,job.updated_at,job.artifact_path,job.error
+""";
+        Add(command,"stale_before",now-processingStaleAfter);Add(command,"now",now);
+        await using var reader=await command.ExecuteReaderAsync(cancellationToken);
+        ExportJobRecord? claimed=await reader.ReadAsync(cancellationToken)?Read(reader):null;
+        await reader.DisposeAsync();
+        await transaction.CommitAsync(cancellationToken);
+        return claimed;
+    }
+
     public async Task SaveAsync(ExportJobRecord job,CancellationToken cancellationToken){await using var connection=await connections.OpenAsync(cancellationToken);await using var command=connection.CreateCommand();command.CommandText="""
 INSERT INTO export_jobs(id,project_id,revision_id,format,status,progress,requested_by,created_at,updated_at,artifact_path,error)
 VALUES(@id,@project,@revision,@format,@status,@progress,@requested,@created,@updated,@artifact,@error)
