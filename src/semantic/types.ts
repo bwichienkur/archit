@@ -20,6 +20,20 @@ export type WallCandidate = {
   validationState: SemanticValidationState;
 };
 
+export type OpeningCandidate = {
+  id: string;
+  kind: 'door' | 'window';
+  center: CadPoint;
+  width: number;
+  height: number;
+  sillHeight?: number;
+  subtype?: string;
+  hostWallCandidateId?: string;
+  offsetFromWallStart?: number;
+  evidence: SemanticEvidence;
+  validationState: SemanticValidationState;
+};
+
 export type RoomCandidate = {
   id: string;
   kind: 'room';
@@ -29,7 +43,7 @@ export type RoomCandidate = {
   validationState: SemanticValidationState;
 };
 
-export type SemanticCandidate = WallCandidate | RoomCandidate;
+export type SemanticCandidate = WallCandidate | OpeningCandidate | RoomCandidate;
 
 export type SemanticExtractionResult = {
   candidates: SemanticCandidate[];
