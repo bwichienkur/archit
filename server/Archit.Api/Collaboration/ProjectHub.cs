@@ -1,17 +1,20 @@
 using System.Security.Claims;
+using Archit.Api.Tenancy;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Archit.Api.Collaboration;
 
-public sealed class ProjectHub : Hub
+public sealed class ProjectHub(TenantAccessService access) : Hub
 {
     private static readonly ProjectPresenceRegistry Presence = new();
 
     public async Task JoinProject(Guid projectId,string userId,string displayName,string role)
     {
+        var decision=await RequireAccess(projectId,"project:read");
         var identity=ResolveIdentity(userId,displayName,role);
+        var effectiveRole=decision.Membership?.Role??identity.Role;
         await Groups.AddToGroupAsync(Context.ConnectionId,GroupName(projectId));
-        Presence.UpsertPresence(projectId,Context.ConnectionId,identity.UserId,identity.DisplayName,identity.Role);
+        Presence.UpsertPresence(projectId,Context.ConnectionId,identity.UserId,identity.DisplayName,effectiveRole);
         await Clients.Group(GroupName(projectId)).SendAsync("presenceChanged",Presence.Snapshot(projectId));
         await Clients.Caller.SendAsync("editLeasesChanged",Presence.ActiveLeases(projectId));
     }
@@ -26,6 +29,7 @@ public sealed class ProjectHub : Hub
 
     public async Task SelectObject(Guid projectId,string? objectKind,string? objectId)
     {
+        await RequireAccess(projectId,"project:read");
         Presence.UpdateSelection(Context.ConnectionId,objectKind,objectId);
         await Clients.Group(GroupName(projectId)).SendAsync("presenceChanged",Presence.Snapshot(projectId));
     }
@@ -34,6 +38,7 @@ public sealed class ProjectHub : Hub
     {
         try
         {
+            await RequireAccess(projectId,"project:edit");
             var identity=ResolveIdentity(userId,userId,"viewer");
             var lease=Presence.AcquireLease(projectId,objectKind,objectId,identity.UserId,Context.ConnectionId,TimeSpan.FromSeconds(ttlSeconds));
             await Clients.Group(GroupName(projectId)).SendAsync("editLeasesChanged",Presence.ActiveLeases(projectId));
@@ -44,6 +49,7 @@ public sealed class ProjectHub : Hub
 
     public async Task ReleaseEditLease(Guid projectId,string objectKind,string objectId)
     {
+        await RequireAccess(projectId,"project:edit");
         Presence.ReleaseLease(projectId,objectKind,objectId,Context.ConnectionId);
         await Clients.Group(GroupName(projectId)).SendAsync("editLeasesChanged",Presence.ActiveLeases(projectId));
     }
@@ -57,6 +63,14 @@ public sealed class ProjectHub : Hub
             await Clients.Group(GroupName(projectId)).SendAsync("editLeasesChanged",Presence.ActiveLeases(projectId));
         }
         await base.OnDisconnectedAsync(exception);
+    }
+
+    private async Task<AccessDecision> RequireAccess(Guid projectId,string permission)
+    {
+        var http=Context.GetHttpContext()??throw new HubException("HTTP context is unavailable for project authorization.");
+        var decision=await access.CheckProjectAsync(http,projectId,permission,http.RequestAborted);
+        if(!decision.Allowed)throw new HubException(decision.Message??"Project access denied.");
+        return decision;
     }
 
     private (string UserId,string DisplayName,string Role) ResolveIdentity(string fallbackUserId,string fallbackDisplayName,string fallbackRole)
