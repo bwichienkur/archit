@@ -5,25 +5,31 @@ export type CadImportJob = {
   status: 'queued' | 'processing' | 'completed' | 'failed';
   fileName: string;
   progress: number;
-  error?: string;
-  document?: CadDocument;
-  validation?: CadImportValidation;
+  error?: string | null;
+  document?: CadDocument | null;
+  validation?: CadImportValidation | null;
 };
 
 export interface CadImportGateway {
-  upload(file: File): Promise<CadImportJob>;
+  upload(file: File, onProgress?: (job: CadImportJob) => void): Promise<CadImportJob>;
   getJob(jobId: string): Promise<CadImportJob>;
 }
 
 export class HttpCadImportGateway implements CadImportGateway {
-  constructor(private readonly baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5080') {}
+  constructor(
+    private readonly baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5080',
+    private readonly timeoutMs = 5 * 60 * 1000,
+  ) {}
 
-  async upload(file: File): Promise<CadImportJob> {
+  async upload(file: File, onProgress?: (job: CadImportJob) => void): Promise<CadImportJob> {
     const body = new FormData();
     body.append('file', file);
     const response = await fetch(`${this.baseUrl}/api/cad/imports`, { method: 'POST', body });
     if (!response.ok) throw new Error(await readError(response));
-    return response.json() as Promise<CadImportJob>;
+    const queued = await response.json() as CadImportJob;
+    onProgress?.(queued);
+    if (queued.status === 'completed' || queued.status === 'failed') return queued;
+    return this.waitForCompletion(queued.id, onProgress);
   }
 
   async getJob(jobId: string): Promise<CadImportJob> {
@@ -31,6 +37,24 @@ export class HttpCadImportGateway implements CadImportGateway {
     if (!response.ok) throw new Error(await readError(response));
     return response.json() as Promise<CadImportJob>;
   }
+
+  private async waitForCompletion(jobId: string, onProgress?: (job: CadImportJob) => void) {
+    const started = Date.now();
+    let delayMs = 400;
+    while (Date.now() - started < this.timeoutMs) {
+      await delay(delayMs);
+      const job = await this.getJob(jobId);
+      onProgress?.(job);
+      if (job.status === 'completed') return job;
+      if (job.status === 'failed') throw new Error(job.error || 'CAD import failed.');
+      delayMs = Math.min(2000, Math.round(delayMs * 1.35));
+    }
+    throw new Error(`CAD import ${jobId} did not finish within ${Math.round(this.timeoutMs / 1000)} seconds.`);
+  }
+}
+
+function delay(milliseconds: number) {
+  return new Promise<void>(resolve => window.setTimeout(resolve, milliseconds));
 }
 
 async function readError(response: Response): Promise<string> {
