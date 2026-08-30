@@ -19,6 +19,8 @@ export type ProjectRevision<TModel = unknown> = {
 
 export interface ProjectGateway {
   createProject(name: string): Promise<ProjectRecord>;
+  listProjects(): Promise<ProjectRecord[]>;
+  getProject(projectId:string):Promise<ProjectRecord>;
   createRevision<TModel>(projectId: string, input: {
     parentRevisionId?: string | null;
     kind: ProjectRevision['kind'];
@@ -27,6 +29,8 @@ export interface ProjectGateway {
     model: TModel;
     note?: string | null;
   }): Promise<ProjectRevision<TModel>>;
+  listRevisions<TModel=unknown>(projectId:string):Promise<ProjectRevision<TModel>[]>;
+  getRevision<TModel=unknown>(projectId:string,revisionId:string):Promise<ProjectRevision<TModel>>;
 }
 
 export class HttpProjectGateway implements ProjectGateway {
@@ -40,6 +44,9 @@ export class HttpProjectGateway implements ProjectGateway {
     });
     return readJson<ProjectRecord>(response);
   }
+
+  async listProjects(){return readJson<ProjectRecord[]>(await fetch(`${this.baseUrl}/api/projects`));}
+  async getProject(projectId:string){return readJson<ProjectRecord>(await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(projectId)}`));}
 
   async createRevision<TModel>(projectId: string, input: {
     parentRevisionId?: string | null;
@@ -56,9 +63,12 @@ export class HttpProjectGateway implements ProjectGateway {
     });
     return readJson<ProjectRevision<TModel>>(response);
   }
+
+  async listRevisions<TModel=unknown>(projectId:string){return readJson<ProjectRevision<TModel>[]>(await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(projectId)}/revisions`));}
+  async getRevision<TModel=unknown>(projectId:string,revisionId:string){return readJson<ProjectRevision<TModel>>(await fetch(`${this.baseUrl}/api/projects/${encodeURIComponent(projectId)}/revisions/${encodeURIComponent(revisionId)}`));}
 }
 
-async function readJson<T>(response: Response): Promise<T> {
+export async function readJson<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => null) as (T & { error?: string; detail?: string }) | null;
   if (!response.ok) throw new Error(body?.error ?? body?.detail ?? `Request failed with HTTP ${response.status}.`);
   if (!body) throw new Error('API returned an empty response.');
