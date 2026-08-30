@@ -37,13 +37,14 @@ public sealed class InMemoryProjectRepository : IProjectRepository
         if (!_projects.TryGetValue(projectId, out var project)) throw new KeyNotFoundException($"Project {projectId} was not found.");
 
         var revisions = _revisions.GetOrAdd(projectId, _ => new ConcurrentDictionary<Guid, ProjectRevision>());
-        if (request.ParentRevisionId is { } parentId && !revisions.ContainsKey(parentId))
-            throw new InvalidOperationException($"Parent revision {parentId} does not belong to project {projectId}.");
+        if (request.ParentRevisionId is { } requestedParentId && !revisions.ContainsKey(requestedParentId))
+            throw new InvalidOperationException($"Parent revision {requestedParentId} does not belong to project {projectId}.");
+        var parentRevisionId=request.ParentRevisionId??revisions.Values.OrderByDescending(item=>item.CreatedAt).ThenByDescending(item=>item.Id).FirstOrDefault()?.Id;
 
         var revision = new ProjectRevision(
             Guid.NewGuid(),
             projectId,
-            request.ParentRevisionId,
+            parentRevisionId,
             request.Kind.Trim(),
             DateTimeOffset.UtcNow,
             request.CreatedBy.Trim(),
