@@ -1,4 +1,4 @@
-import type { ArchitecturalWall, BuildingModelV2 } from '../domain/building';
+import type { ArchitecturalWall, BuildingModelV2, WallOpening } from '../domain/building';
 import { recalculateInferredRooms } from '../domain/recalculate';
 
 export interface BuildingCommand {
@@ -24,6 +24,26 @@ export class UpdateArchitecturalWallCommand implements BuildingCommand {
 
   undo(model: BuildingModelV2): BuildingModelV2 {
     return replaceWallAndRecalculate(model, this.before);
+  }
+}
+
+export class UpdateWallOpeningCommand implements BuildingCommand {
+  readonly label: string;
+
+  constructor(
+    private readonly before: WallOpening,
+    private readonly after: WallOpening,
+    label = 'Update opening',
+  ) {
+    this.label = label;
+  }
+
+  execute(model: BuildingModelV2): BuildingModelV2 {
+    return replaceOpening(model, this.after);
+  }
+
+  undo(model: BuildingModelV2): BuildingModelV2 {
+    return replaceOpening(model, this.before);
   }
 }
 
@@ -66,4 +86,11 @@ function replaceWallAndRecalculate(model: BuildingModelV2, wall: ArchitecturalWa
     ...model,
     walls: model.walls.map(item => item.id === wall.id ? wall : item),
   });
+}
+
+function replaceOpening(model: BuildingModelV2, opening: WallOpening) {
+  return {
+    ...model,
+    openings: model.openings.map(item => item.id === opening.id ? opening : item),
+  };
 }
