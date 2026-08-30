@@ -37,19 +37,42 @@ app.UseAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "Archit.Api" })).AllowAnonymous();
 app.MapGet("/api/cad/provider", (ICadImportProvider provider) => Results.Ok(new { provider = provider.Name, configured = provider.IsConfigured }));
 
-app.MapPost("/api/cad/imports", async (HttpRequest request, ICadImportProvider provider, ICadArtifactStore artifacts, ICadImportQueue queue, ICadImportJobStore jobs, CancellationToken cancellationToken) =>
+app.MapPost("/api/cad/imports", async (HttpRequest request, HttpContext context, TenantAccessService access, ICadImportProvider provider, ICadArtifactStore artifacts, ICadImportQueue queue, ICadImportJobStore jobs, CancellationToken cancellationToken) =>
 {
     if (!request.HasFormContentType) return Results.BadRequest(new { error = "Expected multipart/form-data." });
     var form = await request.ReadFormAsync(cancellationToken); var file = form.Files.GetFile("file");
     if (file is null || file.Length == 0) return Results.BadRequest(new { error = "A non-empty file field named 'file' is required." });
     if (!string.Equals(Path.GetExtension(file.FileName), ".dwg", StringComparison.OrdinalIgnoreCase)) return Results.BadRequest(new { error = "This endpoint currently accepts .dwg files only." });
     const long maxFileBytes = 250L * 1024L * 1024L; if (file.Length > maxFileBytes) return Results.BadRequest(new { error = "DWG exceeds the 250 MB import limit." });
+
+    Guid? projectId = null;
+    var projectText = form["projectId"].FirstOrDefault();
+    if (!string.IsNullOrWhiteSpace(projectText))
+    {
+        if (!Guid.TryParse(projectText, out var parsedProjectId)) return Results.BadRequest(new { error = "projectId must be a valid GUID." });
+        projectId = parsedProjectId;
+    }
+    if (access.AuthEnabled)
+    {
+        if (projectId is not Guid authenticatedProjectId) return Results.BadRequest(new { error = "projectId is required for authenticated CAD imports." });
+        var decision = await access.CheckProjectAsync(context, authenticatedProjectId, "cad:import", cancellationToken); if (!decision.Allowed) return decision.ToResult();
+    }
+
     if (!provider.IsConfigured) return Results.Json(new { error = "No licensed DWG import provider is configured on the server. Set ARCHIT_CAD_IMPORTER_PATH to a native ODA/Autodesk worker executable." }, statusCode: StatusCodes.Status503ServiceUnavailable);
-    var id = Guid.NewGuid(); var safeFileName = Path.GetFileName(file.FileName); var queued = new CadImportJob(id, safeFileName, "queued", 0);
+    var id = Guid.NewGuid(); var safeFileName = Path.GetFileName(file.FileName); var queued = new CadImportJob(id, safeFileName, "queued", 0, ProjectId: projectId);
     try { await using var source = file.OpenReadStream(); await artifacts.SaveSourceAsync(id, safeFileName, source, cancellationToken); await jobs.SaveAsync(queued, cancellationToken); await queue.EnqueueAsync(id, cancellationToken); return Results.Accepted($"/api/cad/imports/{id}", queued); }
     catch (Exception ex) { await jobs.DeleteAsync(id, CancellationToken.None); return Results.Problem(ex.Message, statusCode: StatusCodes.Status500InternalServerError); }
 });
-app.MapGet("/api/cad/imports/{id:guid}", async (Guid id, ICadImportJobStore jobs, CancellationToken cancellationToken) => { var job = await jobs.GetAsync(id, cancellationToken); return job is null ? Results.NotFound() : Results.Ok(job); });
+app.MapGet("/api/cad/imports/{id:guid}", async (Guid id, HttpContext context, TenantAccessService access, ICadImportJobStore jobs, CancellationToken cancellationToken) =>
+{
+    var job = await jobs.GetAsync(id, cancellationToken); if (job is null) return Results.NotFound();
+    if (access.AuthEnabled)
+    {
+        if (job.ProjectId is not Guid projectId) return Results.Json(new { error = "Authenticated access is not allowed for a tenantless CAD import job." }, statusCode: StatusCodes.Status403Forbidden);
+        var decision = await access.CheckProjectAsync(context, projectId, "project:read", cancellationToken); if (!decision.Allowed) return decision.ToResult();
+    }
+    return Results.Ok(job);
+});
 
 app.MapPost("/api/projects", async (CreateProjectRequest request, HttpContext context, TenantAccessService access, IProjectRepository repository, CancellationToken cancellationToken) =>
 {
@@ -105,8 +128,19 @@ app.MapGet("/api/tenants/{tenantId:guid}/memberships/{userId}", async (Guid tena
 
 app.MapPost("/api/projects/{projectId:guid}/exports", async (Guid projectId, CreateExportRequest request, IExportJobRepository repository, CancellationToken cancellationToken) => { if (!string.Equals(request.Format,"json",StringComparison.OrdinalIgnoreCase)) return Results.BadRequest(new { error = $"Server-side export format '{request.Format}' is not configured. JSON is currently available; DWG/DXF/IFC require format-specific providers." }); try { var job = await repository.CreateAsync(projectId, request, cancellationToken); return Results.Accepted($"/api/exports/{job.Id}", job); } catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); } }).AddEndpointFilter(new ProjectPermissionFilter("export:create"));
 app.MapGet("/api/projects/{projectId:guid}/exports", async (Guid projectId, IExportJobRepository repository, CancellationToken cancellationToken) => Results.Ok(await repository.ListAsync(projectId, cancellationToken))).AddEndpointFilter(new ProjectPermissionFilter("project:read"));
-app.MapGet("/api/exports/{jobId:guid}", async (Guid jobId, IExportJobRepository repository, CancellationToken cancellationToken) => { var job = await repository.GetAsync(jobId, cancellationToken); return job is null ? Results.NotFound() : Results.Ok(job); });
-app.MapGet("/api/exports/{jobId:guid}/artifact", async (Guid jobId, IExportJobRepository repository, IExportArtifactStore artifacts, CancellationToken cancellationToken) => { var job = await repository.GetAsync(jobId, cancellationToken); if (job is null) return Results.NotFound(); if (job.Status != "completed" || string.IsNullOrWhiteSpace(job.ArtifactPath)) return Results.Conflict(new { error = "Export artifact is not ready." }); try { var stream = await artifacts.OpenAsync(job, cancellationToken); return Results.Stream(stream,"application/json",Path.GetFileName(job.ArtifactPath)); } catch (FileNotFoundException) { return Results.NotFound(); } });
+app.MapGet("/api/exports/{jobId:guid}", async (Guid jobId, HttpContext context, TenantAccessService access, IExportJobRepository repository, CancellationToken cancellationToken) =>
+{
+    var job = await repository.GetAsync(jobId, cancellationToken); if (job is null) return Results.NotFound();
+    var decision = await access.CheckProjectAsync(context, job.ProjectId, "project:read", cancellationToken); if (!decision.Allowed) return decision.ToResult();
+    return Results.Ok(job);
+});
+app.MapGet("/api/exports/{jobId:guid}/artifact", async (Guid jobId, HttpContext context, TenantAccessService access, IExportJobRepository repository, IExportArtifactStore artifacts, CancellationToken cancellationToken) =>
+{
+    var job = await repository.GetAsync(jobId, cancellationToken); if (job is null) return Results.NotFound();
+    var decision = await access.CheckProjectAsync(context, job.ProjectId, "project:read", cancellationToken); if (!decision.Allowed) return decision.ToResult();
+    if (job.Status != "completed" || string.IsNullOrWhiteSpace(job.ArtifactPath)) return Results.Conflict(new { error = "Export artifact is not ready." });
+    try { var stream = await artifacts.OpenAsync(job, cancellationToken); return Results.Stream(stream,"application/json",Path.GetFileName(job.ArtifactPath)); } catch (FileNotFoundException) { return Results.NotFound(); }
+});
 
 app.MapHub<ProjectHub>("/hubs/projects");
 app.Run();
