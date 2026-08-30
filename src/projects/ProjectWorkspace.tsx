@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FolderOpen, RefreshCw } from 'lucide-react';
 import { currentAuthSession } from '../auth/oidc';
+import { HttpCadImportGateway } from '../cad/importer';
+import { useCadStore } from '../cad/store';
 import { useBuildingEditorStore } from '../editor/buildingStore';
 import { setActiveProject } from './activeProject';
 import { HttpProjectGateway, type ProjectRecord, type ProjectRevision } from './gateway';
@@ -8,8 +10,9 @@ import { isBuildingModelV2 } from './modelGuard';
 import { useProjectPersistenceStore } from './store';
 
 const gateway=new HttpProjectGateway();
+const cadGateway=new HttpCadImportGateway();
 
-type ProjectSummary={project:ProjectRecord;revisions:ProjectRevision[];latestBim:ProjectRevision|null};
+type ProjectSummary={project:ProjectRecord;revisions:ProjectRevision[];latestBim:ProjectRevision|null;latestImport:ProjectRevision|null};
 
 export function ProjectWorkspace(){
   const activeProjectId=useProjectPersistenceStore(state=>state.projectId);
@@ -26,7 +29,8 @@ export function ProjectWorkspace(){
       const summaries=await Promise.all(projects.map(async project=>{
         const revisions=await gateway.listRevisions(project.id);
         const latestBim=revisions.find(revision=>isBuildingModelV2(revision.model))??null;
-        return{project,revisions,latestBim};
+        const latestImport=revisions.find(revision=>revision.kind==='import'&&Boolean(revision.sourceImportId))??null;
+        return{project,revisions,latestBim,latestImport};
       }));
       setItems(summaries);
     }catch(reason){setError(message(reason));}
@@ -38,9 +42,16 @@ export function ProjectWorkspace(){
   async function open(summary:ProjectSummary){
     setOpening(summary.project.id);setError(null);
     try{
+      const importJob=summary.latestImport?.sourceImportId?await cadGateway.getJob(summary.latestImport.sourceImportId):null;
       setActiveProject(summary.project);
       const revisionHead=summary.revisions[0]?.id??null;
       useProjectPersistenceStore.setState({projectId:summary.project.id,revisionId:revisionHead,error:null});
+
+      useCadStore.getState().clearCad();
+      if(importJob?.status==='completed'&&importJob.document){
+        useCadStore.getState().setImportedCad(importJob.document,importJob.validation??null);
+      }
+
       const editor=useBuildingEditorStore.getState();
       editor.clear();
       if(summary.latestBim&&isBuildingModelV2(summary.latestBim.model)){
@@ -63,7 +74,7 @@ export function ProjectWorkspace(){
       return <article key={summary.project.id} className={isActive?'active':''}>
         <div className="project-list-title"><FolderOpen size={16}/><div><strong>{summary.project.name}</strong><small>{summary.project.id}</small></div></div>
         <dl><div><dt>Updated</dt><dd>{formatDate(summary.project.updatedAt)}</dd></div><div><dt>Revisions</dt><dd>{summary.revisions.length}</dd></div><div><dt>Latest</dt><dd>{latest?.kind??'empty'}</dd></div></dl>
-        <p>{summary.latestBim?'Editable BIM snapshot available.':summary.revisions.length?'Import history only; semantic/BIM model has not been saved yet.':'Empty project.'}</p>
+        <p>{summary.latestBim?'Editable BIM snapshot available.':summary.latestImport?'Normalized CAD import available; semantic/BIM model has not been saved yet.':summary.revisions.length?'Revision history exists, but no resumable BIM/CAD snapshot was found.':'Empty project.'}</p>
         <button disabled={opening===summary.project.id} onClick={()=>void open(summary)}>{opening===summary.project.id?'Opening…':isActive?'Reload project':'Open project'}</button>
       </article>;
     })}</div>
