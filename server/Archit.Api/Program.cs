@@ -1,4 +1,6 @@
 using Archit.Api.Cad;
+using Archit.Api.Catalog;
+using Archit.Api.Collaboration;
 using Archit.Api.Projects;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,6 +27,8 @@ builder.Services.AddSingleton<ICadArtifactStore, LocalCadArtifactStore>();
 builder.Services.AddSingleton<ICadImportJobStore, LocalCadImportJobStore>();
 builder.Services.AddHostedService<CadImportWorker>();
 builder.Services.AddSingleton<IProjectRepository, LocalProjectRepository>();
+builder.Services.AddSingleton<ICatalogRepository, LocalCatalogRepository>();
+builder.Services.AddSingleton<ICollaborationRepository, LocalCollaborationRepository>();
 
 var app = builder.Build();
 app.UseCors();
@@ -136,6 +140,54 @@ app.MapGet("/api/projects/{projectId:guid}/revisions/{revisionId:guid}", async (
 {
     var revision = await repository.GetRevisionAsync(projectId, revisionId, cancellationToken);
     return revision is null ? Results.NotFound() : Results.Ok(revision);
+});
+
+app.MapPut("/api/catalog/products", async (UpsertCatalogProductRequest request, ICatalogRepository repository, CancellationToken cancellationToken) =>
+{
+    try { return Results.Ok(await repository.UpsertAsync(request, cancellationToken)); }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapGet("/api/catalog/products/{id:guid}", async (Guid id, ICatalogRepository repository, CancellationToken cancellationToken) =>
+{
+    var product = await repository.GetAsync(id, cancellationToken);
+    return product is null ? Results.NotFound() : Results.Ok(product);
+});
+
+app.MapGet("/api/catalog/products", async (string? manufacturer, string? category, string? q, ICatalogRepository repository, CancellationToken cancellationToken) =>
+    Results.Ok(await repository.SearchAsync(manufacturer, category, q, cancellationToken)));
+
+app.MapPost("/api/projects/{projectId:guid}/collaboration/events", async (Guid projectId, CreateCollaborationEventRequest request, ICollaborationRepository repository, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var created = await repository.AddEventAsync(projectId, request, cancellationToken);
+        return Results.Created($"/api/projects/{projectId}/collaboration/events/{created.Id}", created);
+    }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapGet("/api/projects/{projectId:guid}/collaboration/events", async (Guid projectId, ICollaborationRepository repository, CancellationToken cancellationToken) =>
+    Results.Ok(await repository.ListEventsAsync(projectId, cancellationToken)));
+
+app.MapPost("/api/projects/{projectId:guid}/collaboration/comments", async (Guid projectId, CreateCommentRequest request, ICollaborationRepository repository, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var created = await repository.AddCommentAsync(projectId, request, cancellationToken);
+        return Results.Created($"/api/projects/{projectId}/collaboration/comments/{created.Id}", created);
+    }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+app.MapGet("/api/projects/{projectId:guid}/collaboration/comments", async (Guid projectId, bool? includeResolved, ICollaborationRepository repository, CancellationToken cancellationToken) =>
+    Results.Ok(await repository.ListCommentsAsync(projectId, includeResolved ?? true, cancellationToken)));
+
+app.MapPost("/api/projects/{projectId:guid}/collaboration/comments/{commentId:guid}/resolve", async (Guid projectId, Guid commentId, ResolveCommentRequest request, ICollaborationRepository repository, CancellationToken cancellationToken) =>
+{
+    try { return Results.Ok(await repository.ResolveCommentAsync(projectId, commentId, request, cancellationToken)); }
+    catch (KeyNotFoundException) { return Results.NotFound(); }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 
 app.Run();
