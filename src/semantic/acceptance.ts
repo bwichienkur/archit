@@ -1,10 +1,12 @@
-import type { ArchitecturalRoom, ArchitecturalWall, BuildingModelV2, Level, SourceLineage } from '../domain/building';
+import type { ArchitecturalRoom, ArchitecturalWall, BuildingModelV2, GeometryLengthUnit, Level, SourceLineage } from '../domain/building';
+import { convertLength } from '../units/architectural';
 import type { RoomCandidate, SemanticCandidate, WallCandidate } from './types';
 
 export type SemanticAcceptanceOptions = {
   projectId: string;
   projectName: string;
   units: 'imperial' | 'metric';
+  geometryUnits: GeometryLengthUnit;
   level?: Level;
   defaultWallHeight?: number;
   defaultRoomType?: string;
@@ -15,7 +17,7 @@ export function createBuildingModelFromCandidates(
   acceptedCandidateIds: Set<string>,
   options: SemanticAcceptanceOptions,
 ): BuildingModelV2 {
-  const level = options.level ?? defaultLevel(options.units);
+  const level = options.level ?? defaultLevel(options.geometryUnits);
   const accepted = candidates.filter(candidate => acceptedCandidateIds.has(candidate.id));
 
   const walls = accepted.filter((candidate): candidate is WallCandidate => candidate.kind === 'wall')
@@ -28,6 +30,7 @@ export function createBuildingModelFromCandidates(
     projectId: options.projectId,
     projectName: options.projectName,
     units: options.units,
+    geometryUnits: options.geometryUnits,
     levels: [level],
     walls,
     openings: [],
@@ -76,8 +79,15 @@ function lineage(candidate: SemanticCandidate): SourceLineage {
   };
 }
 
-function defaultLevel(units: 'imperial' | 'metric'): Level {
-  return units === 'imperial'
-    ? { id: 'level:ground', name: 'Ground Floor', elevation: 0, floorToFloorHeight: 10, defaultCeilingHeight: 9 }
-    : { id: 'level:ground', name: 'Ground Floor', elevation: 0, floorToFloorHeight: 3.05, defaultCeilingHeight: 2.74 };
+function defaultLevel(geometryUnits: GeometryLengthUnit): Level {
+  if (geometryUnits === 'unitless') {
+    throw new Error('A level with explicit dimensions is required before accepting semantic geometry from a unitless drawing.');
+  }
+  return {
+    id: 'level:ground',
+    name: 'Ground Floor',
+    elevation: 0,
+    floorToFloorHeight: convertLength(10, 'feet', geometryUnits),
+    defaultCeilingHeight: convertLength(9, 'feet', geometryUnits),
+  };
 }
