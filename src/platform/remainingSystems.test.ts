@@ -1,0 +1,15 @@
+import { describe, expect, it } from 'vitest';
+import type { BuildingModelV2 } from '../domain/building';
+import { importCatalogCsv } from '../builder/catalogImport';
+import { runComplianceChecks } from '../compliance/checks';
+import { validateFootprintSetbacks } from '../site/siteModel';
+import { CollaborationTimeline } from '../collaboration/events';
+
+function model(): BuildingModelV2 { return { schemaVersion:2,projectId:'p',projectName:'x',units:'imperial',geometryUnits:'feet',levels:[{id:'l1',name:'Ground',elevation:0,floorToFloorHeight:10,defaultCeilingHeight:9}],walls:[{id:'w',levelId:'l1',name:'Wall',start:{x:0,y:0},end:{x:20,y:0},thickness:.5,height:9,baseElevation:0,wallType:'interior',openingIds:['d'],lineage:{sourceCadEntityIds:[],validationState:'confirmed'}}],openings:[{id:'d',kind:'door',hostWallId:'w',offsetFromWallStart:2,width:2.5,height:7,lineage:{sourceCadEntityIds:[],validationState:'confirmed'}}],rooms:[{id:'r',levelId:'l1',name:'Tiny',roomType:'bedroom',boundary:[{x:0,y:0},{x:5,y:0},{x:5,y:5},{x:0,y:5}],ceilingHeight:9,lineage:{sourceCadEntityIds:[],validationState:'confirmed'}}],stairs:[],roofPlanes:[],cabinets:[],fixtures:[]}; }
+
+describe('remaining platform systems',()=>{
+  it('imports quoted catalog CSV without losing custom metadata',()=>{ const result=importCatalogCsv('id,manufacturer,sku,name,category,unitOfMeasure,finish\n1,Moen,S1,"Faucet, Tall",faucet,each,Chrome\n'); expect(result.issues).toEqual([]); expect(result.products[0].name).toBe('Faucet, Tall'); expect(result.products[0].metadata.finish).toBe('Chrome'); });
+  it('returns profile-driven compliance findings with no hard-coded jurisdiction claims',()=>{ const findings=runComplianceChecks(model(),{name:'test',minimumDoorWidth:3,minimumHallWidth:3,maximumStairRiser:.625,minimumStairTread:.8,minimumStairWidth:3,minimumRoomArea:70,units:'ft'}); expect(findings.map(f=>f.code)).toContain('door-width'); expect(findings.map(f=>f.code)).toContain('room-area'); });
+  it('detects setback violations',()=>{ const issues=validateFootprintSetbacks({id:'site',boundary:[{x:0,y:0},{x:100,y:0},{x:100,y:100},{x:0,y:100}],frontEdge:[{x:0,y:0},{x:100,y:0}]},{id:'house',boundary:[{x:4,y:4},{x:60,y:4},{x:60,y:60},{x:4,y:60}]},{front:10,rear:10,side:5}); expect(issues.some(i=>i.code==='front-setback')).toBe(true); expect(issues.some(i=>i.code==='side-setback')).toBe(true); });
+  it('keeps collaboration events idempotent and comments resolvable',()=>{ const timeline=new CollaborationTimeline(); const event={id:'e1',projectId:'p',actorId:'u',actorRole:'architect' as const,type:'object-changed' as const,timestamp:'2026-01-01T00:00:00Z',payload:{}}; expect(timeline.append(event)).toBe(true); expect(timeline.append(event)).toBe(false); timeline.addComment({id:'c1',projectId:'p',authorId:'u',authorRole:'architect',target:{kind:'wall',id:'w'},body:'Review',createdAt:'2026-01-01T00:00:00Z'}); timeline.resolveComment('c1','u2','2026-01-02T00:00:00Z'); expect(timeline.listComments('p')[0].resolvedBy).toBe('u2'); });
+});
