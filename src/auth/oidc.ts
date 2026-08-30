@@ -36,8 +36,12 @@ export async function bootstrapOidc(): Promise<ArchitAuthSession> {
   if(!manager) return anonymousSession(false);
   if(window.location.pathname === '/auth/callback') {
     try {
-      await manager.signinRedirectCallback();
-      window.history.replaceState({}, document.title, '/');
+      const user = await manager.signinRedirectCallback();
+      const state = user.state && typeof user.state === 'object' ? user.state as { returnTo?: unknown } : undefined;
+      const stored = sessionStorage.getItem('archit:returnTo');
+      sessionStorage.removeItem('archit:returnTo');
+      const requested = typeof state?.returnTo === 'string' ? state.returnTo : stored ?? '/';
+      window.history.replaceState({}, document.title, safeReturnTo(requested));
     } catch(error) {
       console.error('OIDC callback failed', error);
       throw error;
@@ -53,8 +57,9 @@ export async function currentAuthSession(): Promise<ArchitAuthSession> {
 
 export async function signIn(returnTo = window.location.pathname + window.location.search) {
   if(!manager) throw new Error('OIDC is not configured.');
-  sessionStorage.setItem('archit:returnTo', safeReturnTo(returnTo));
-  await manager.signinRedirect({ state: { returnTo: safeReturnTo(returnTo) } });
+  const safe = safeReturnTo(returnTo);
+  sessionStorage.setItem('archit:returnTo', safe);
+  await manager.signinRedirect({ state: { returnTo: safe } });
 }
 
 export async function signOut() {
