@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { demoModel, type BuildingModel, type Wall } from '../domain/model';
 import { CommandHistory, UpdateWallCommand } from './commands';
+import { useBuildingEditorStore } from './buildingStore';
 
 const history = new CommandHistory();
 
@@ -38,6 +39,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const next: Wall = { ...current, ...patch, validationState: 'modified' };
     set({ model: history.execute(get().model, new UpdateWallCommand(current, next)) });
   },
-  undo: () => set({ model: history.undo(get().model) }),
-  redo: () => set({ model: history.redo(get().model) })
+  undo: () => {
+    const building = useBuildingEditorStore.getState();
+    if (building.model) {
+      building.undo();
+      return;
+    }
+    set({ model: history.undo(get().model) });
+  },
+  redo: () => {
+    const building = useBuildingEditorStore.getState();
+    if (building.model) {
+      building.redo();
+      return;
+    }
+    set({ model: history.redo(get().model) });
+  },
 }));
