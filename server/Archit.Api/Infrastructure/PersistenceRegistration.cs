@@ -4,6 +4,7 @@ using Archit.Api.Collaboration;
 using Archit.Api.Exports;
 using Archit.Api.Projects;
 using Archit.Api.Tenancy;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Archit.Api.Infrastructure;
 
@@ -22,6 +23,10 @@ public static class PersistenceRegistration
             services.AddSingleton<IExportJobRepository,PostgresExportJobRepository>();
             services.AddSingleton<ICadImportJobStore,PostgresCadImportJobStore>();
             services.AddSingleton<ICadImportQueue,PostgresCadImportQueue>();
+
+            // Hosted services start in registration order. Insert schema bootstrap first so
+            // CAD/export workers never race a fresh PostgreSQL deployment.
+            services.Insert(0,ServiceDescriptor.Singleton<IHostedService,PostgresSchemaInitializer>());
         }
 
         var blobConnection=configuration["Storage:AzureBlob:ConnectionString"]??Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING");
