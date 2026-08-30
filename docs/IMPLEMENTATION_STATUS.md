@@ -8,77 +8,87 @@ DWG ingestion -> normalized immutable CAD -> fidelity validation -> semantic ext
 
 | Phase | Area | State | Current implementation |
 |---|---|---|---|
-| 1 | Production DWG ingestion | Started | `ICadImportProvider`, API upload flow, isolated native worker contract. Licensed ODA/Autodesk worker remains external dependency. |
-| 2 | High-fidelity 2D CAD renderer | Started | `CadReferenceLayer`, normalized line/polyline/arc/circle rendering, imported CAD editor view, source entity selection/inspection, and CAD layer visibility/isolate controls. |
-| 3 | CAD fidelity validation | Started | Deterministic entity-count, bounds, unsupported-entity, XRef/font validation with structured issues plus an editor validation-report modal. |
-| 4 | Semantic recognition | Started | Semantic candidate/evidence model, deterministic parallel-line wall detector, room candidates inferred from closed wall topology, and explicit candidate-to-building acceptance conversion. |
-| 5 | Geometry kernel | Started | Core geometry kernel, snapping/intersection engine, endpoint topology, bounded-face detection, and tests. |
-| 6 | Parametric walls | Started | Shared architectural wall domain, command editing, endpoint join graph, and join classification; wall-face cleanup/assemblies remain. |
-| 7 | Doors/windows | Started | Hosted opening domain, host validation, and wall-relative placement geometry exist; recognition/rendering/editing remain. |
-| 8 | Room engine | Started | Room domain, surface selections, and closed-face boundary inference exist; wall-face offsets, labeling, editing and dynamic recalculation remain. |
-| 9 | Full 3D generation | Started | Walls generated from shared model in Three.js; remaining architectural generators pending. |
-| 10 | Professional editing tools | Started | Source/semantic selection, layer isolation, property editing and command architecture exist; full CAD toolset pending. |
-| 11 | Undo/redo/revisions | Started | Command-based undo/redo plus API project/model revision contracts and repository exist; DB persistence/diff UI remain. |
-| 12 | Multi-story | Started | Level/elevation domain added; UI and vertical relationships remain. |
-| 13 | Roof system | Started | Roof-plane domain added; solver/rendering/takeoff pending. |
-| 14 | Stair system | Started | Parametric stair domain added; solving/rendering pending. |
-| 15 | Cabinet configurator | Started | Cabinet domain and builder catalog foundation exist; snapping/layout generator pending. |
-| 16 | Materials/finishes | Started | Product/material metadata and room surface selections exist. |
+| 1 | Production DWG ingestion | Started | Schema-v2 API contract, isolated native worker, SHA-256/schema validation, bounded worker timeout, artifact-store abstraction, queued background processing, and frontend job polling. Licensed ODA/Autodesk worker remains external dependency. |
+| 2 | High-fidelity 2D CAD renderer | Started | Source-aligned renderer supports lines, polylines, circles/arcs, ellipses, sampled splines, text/MText, leaders/dimensions, hatches, solids/faces, points and normalized 2D block instances; layer visibility/isolate and source inspection are wired. |
+| 3 | CAD fidelity validation | Started | Deterministic entity-count, bounds, unsupported-entity, XRef/font validation with structured issues plus editor validation UI and worker-output integrity checks. |
+| 4 | Semantic recognition | Started | Deterministic unit-aware wall detection, closed-room topology detection, candidate evidence/confidence, review states, explicit acceptance, and semantic-to-BIM promotion. |
+| 5 | Geometry kernel | Started | Core geometry, snapping/intersections, endpoint topology, bounded-face detection and regression tests. |
+| 6 | Parametric walls | Started | Architectural wall domain, endpoint join graph, join classification, source-aligned V2 editing and dynamic room recalculation. Wall-face cleanup/assemblies remain. |
+| 7 | Doors/windows | Started | Hosted opening domain, host validation and wall-relative placement geometry exist; recognition, cuts, renderer and editor UX remain. |
+| 8 | Room engine | Started | Closed-face inference, room domain/surfaces, V2 room overlay/inspection and inferred-room recalculation after wall edits. Wall-face offsets and labeling remain. |
+| 9 | Full 3D generation | Started | Accepted V2 walls generate directly in Three.js using source geometry proportions; openings, floors, roofs, stairs and fixtures remain. |
+| 10 | Professional editing tools | Started | CAD/BIM selection, layer isolation, property edits, snapping foundation and command architecture exist; full CAD toolset and V2 command migration remain. |
+| 11 | Undo/redo/revisions | Started | Existing command history plus project/model revision API; editor Save creates projects/revisions and prefers BuildingModelV2 once promoted. Durable DB/diff UI remain. |
+| 12 | Multi-story | Started | Level/elevation domain exists; UI and vertical relationships remain. |
+| 13 | Roof system | Started | Roof-plane domain exists; solver/rendering/takeoff pending. |
+| 14 | Stair system | Started | Parametric stair domain exists; solving/rendering pending. |
+| 15 | Cabinet configurator | Started | Cabinet domain and product catalog foundation exist; layout/snapping generator pending. |
+| 16 | Materials/finishes | Started | Product/material metadata and room-surface selections exist. |
 | 17 | Manufacturer catalog | Started | Catalog/product/variant domain exists. |
-| 18 | Compatibility rules | Planned | Typed target compatibility engine next after richer product domain. |
-| 19 | Builder configurator | Planned | Depends on stable rooms/surfaces/catalog targeting. |
-| 20 | Furniture/interior planning | Started | Generic fixture/furniture placement domain exists; collision/layout UI pending. |
-| 21 | Electrical/lighting | Started | Fixture domain supports electrical and lighting categories. |
-| 22 | Plumbing | Started | Fixture domain supports plumbing category; rough-in rules pending. |
+| 18 | Compatibility rules | Started | Typed room/surface/object compatibility engine prevents invalid product placement. |
+| 19 | Builder configurator | Started | Configuration session, compatible assignment/replacement, waste/quantity tracking and locked selection behavior are implemented with tests. |
+| 20 | Furniture/interior planning | Started | Furniture target roles and generic placement domain exist; collision/layout UI pending. |
+| 21 | Electrical/lighting | Started | Fixture domain and compatibility targets support electrical/lighting categories. |
+| 22 | Plumbing | Started | Plumbing fixture domain and compatible host targets exist; rough-in rules pending. |
 | 23 | Takeoff engine | Started | Surface, trim, waste and package-coverage calculations with tests. |
-| 24 | Cost/pricing | Started | Catalog pricing fields and takeoff quantities form base; price-book engine pending. |
-| 25 | Selection management | Started | Product selections are represented on configurable surfaces; approval workflow pending. |
+| 24 | Cost/pricing | Started | Catalog pricing plus effective builder overrides and deterministic material/labor/markup calculation. |
+| 25 | Selection management | Started | Draft/customer-approved/builder-approved/locked configuration states exist; workflow UI/audit remains. |
 | 26 | Construction output | Planned | Export contracts should follow model stabilization. |
-| 27 | Annotation/dimensioning | Planned | CAD annotation preservation exists; authoring engine pending. |
+| 27 | Annotation/dimensioning | Started | Imported normalized dimensions/leaders/text render; authoring/editing engine remains. |
 | 28 | Schedules | Planned | Depends on stable openings/rooms/fixtures. |
 | 29 | Collaboration | Planned | Backend boundary selected; SignalR/event model pending. |
-| 30 | SaaS/tenancy | Started | Project/revision API repository boundary exists and production CORS is restricted; database, auth and tenant isolation remain. |
-| 31 | Builder price books | Planned | Depends on pricing and tenancy. |
-| 32 | Catalog ingestion | Planned | Depends on catalog persistence and manufacturer schemas. |
+| 30 | SaaS/tenancy | Started | Project/revision repository boundary and production CORS restrictions exist; Postgres, auth and tenant isolation remain. |
+| 31 | Builder price books | Started | Effective-dated material/labor/markup/allowance overrides with catalog fallback and tests. |
+| 32 | Catalog ingestion | Planned | Depends on catalog persistence/manufacturer schemas. |
 | 33 | AI design assistant | Planned | Must remain advisory above deterministic geometry. |
 | 34 | Code/compliance checks | Planned | Depends on stable BIM topology and jurisdiction data. |
 | 35 | Site planning | Planned | Extend domain after house geometry is mature. |
 | 36 | Rendering quality | Started | R3F pipeline exists; production PBR/lighting/LOD pending. |
 | 37 | Walkthrough/presentation | Started | Orbit/perspective foundation exists; first-person navigation pending. |
 | 38 | Mobile/tablet review | Started | Responsive shell exists; dedicated review UX pending. |
-| 39 | Performance hardening | Started | Architectural separation supports incremental render work; spatial index/BVH/workers pending. |
-| 40 | Reliability/regression | Started | Vitest geometry/takeoff/validation/semantic/topology/wall-domain tests and CI exist; DWG corpus pending. |
+| 39 | Performance hardening | Started | Async CAD jobs and architectural separation exist; spatial indexes/BVH/Web Workers remain. |
+| 40 | Reliability/regression | Started | CI plus geometry/takeoff/validation/semantic/topology/wall/unit/configurator/price-book tests exist; production DWG corpus remains. |
 
-## Current sprint
+## Current sprint — completed
 
-Completed in this tranche:
+1. CAD schema v2 on frontend and API contracts.
+2. Source validation report and source-entity inspector.
+3. CAD layer controls and source-aligned exact reference view.
+4. Unit-aware deterministic wall inference and closed-room topology.
+5. Semantic review with pending/accepted/rejected states.
+6. Explicit promotion into `BuildingModelV2` with immutable CAD lineage.
+7. Explicit geometry units; unitless drawings are blocked from BIM promotion until calibrated.
+8. Source-aligned editable 2D BIM overlay and V2 wall/room inspection.
+9. V2 wall-based 3D generation and dynamic inferred-room recalculation.
+10. Wall join graph and hosted-opening validation.
+11. Architectural unit parsing/formatting/conversion.
+12. Builder compatibility, configuration sessions and effective price books.
+13. Project/model revision API and functional editor Save.
+14. Expanded normalized CAD rendering for major 2D entity families and block instances.
+15. Native-worker SHA/schema/integrity checks and timeout protection.
+16. CAD imports moved out of the HTTP lifecycle into queue + background worker + artifact storage abstraction.
+17. CI now runs for every `feature/**` branch.
 
-1. Normalized CAD schema v2 foundations.
-2. Production validation report UI.
-3. Imported CAD source view with entity inspection.
-4. CAD layer visibility and isolate controls.
-5. Endpoint topology and closed-room boundary inference.
-6. Parametric wall join graph and hosted-opening geometry validation.
-7. Explicit semantic candidate acceptance preserving CAD lineage.
-8. Project/model revision API boundary and in-memory repository adapter.
-9. Production CORS defaults no longer allow arbitrary origins.
+## Next execution order
 
-Next execution order:
-
-1. Add semantic candidate review/accept/reject UI.
-2. Connect accepted candidates to the editor's `BuildingModelV2` state.
-3. Add architectural units parser/formatter and numeric coordinate editing.
-4. Add dynamic room recalculation after wall edits.
-5. Expand exact CAD rendering for ellipse, text/MText, dimensions, hatches and blocks.
-6. Add persistent Postgres repository and object-storage abstraction.
-7. Move CAD imports to durable background jobs rather than synchronous request processing.
-8. Connect the licensed native DWG worker when SDK credentials/runtime are available.
+1. Migrate V2 wall edits onto the command/undo-redo system and add coordinate/endpoint editing.
+2. Add hosted door/window recognition, 2D symbols and 3D wall cuts.
+3. Add wall-face join cleanup and true room boundaries rather than centerline boundaries.
+4. Persist projects, revisions and import jobs in PostgreSQL; replace local artifact storage with cloud object storage adapter.
+5. Add durable queue/job recovery and import history after process restarts.
+6. Add catalog persistence and CSV/XLSX ingestion pipeline.
+7. Build builder configurator UI on top of compatibility/session/price-book core.
+8. Add floors/ceilings/openings to V2 3D generation.
+9. Add schedules and vector export contracts once opening/room topology stabilizes.
+10. Connect the licensed native DWG worker when SDK credentials/runtime are available.
 
 ## Definition of done for CAD fidelity
 
 - Original DWG remains immutable.
-- Every normalized entity retains its source handle/lineage.
+- Every normalized entity retains source handle/lineage.
 - Unsupported entities are retained and reported, never silently dropped.
-- Source and normalized entity counts and bounds are validated within explicit tolerances.
+- Source and normalized counts/bounds are validated within explicit tolerances.
+- Upload SHA-256 is verified against worker output.
 - Semantic inference never alters source CAD geometry.
-- User modifications create a building-model revision rather than modifying the imported reference.
+- Drawing units are explicit before semantic geometry becomes editable BIM.
+- User modifications create building-model revisions rather than modifying the imported reference.
