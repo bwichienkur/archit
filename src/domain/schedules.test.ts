@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BuildingModelV2 } from './building';
-import { buildOpeningSchedule } from './schedules';
+import { buildOpeningSchedule, buildOpeningScheduleCsv } from './schedules';
 
 function model(): BuildingModelV2 {
   return {
@@ -32,6 +32,21 @@ describe('buildOpeningSchedule', () => {
     expect(rows[2]).toMatchObject({ kind:'window', sillHeight:3, subtype:'single-hung' });
     expect(rows[1].sourceCadEntityIds).toEqual(['cad:d2']);
     expect(rows[1].validationState).toBe('modified');
+  });
+
+  it('exports stable construction CSV with units and lineage', () => {
+    const csv = buildOpeningScheduleCsv(model());
+    const lines = csv.split('\r\n');
+    expect(lines[0]).toBe('Mark,Type,Level,Host Wall,Width,Height,Sill Height,Units,Subtype,Handing,Swing,Validation State,Opening ID,Source CAD Entity IDs');
+    expect(lines[1]).toContain('D01,door,Ground Floor,A Wall,3,7,,feet,,left,out,confirmed,door-a,cad:d1');
+    expect(lines[3]).toContain('W01,window,Ground Floor,B Wall,4,4,3,feet,single-hung,,,confirmed,window-a,cad:w1');
+  });
+
+  it('escapes commas and quotes in schedule CSV fields', () => {
+    const source = model();
+    source.walls[0] = { ...source.walls[0], name: 'Entry, "Feature" Wall' };
+    const csv = buildOpeningScheduleCsv(source);
+    expect(csv).toContain('"Entry, ""Feature"" Wall"');
   });
 
   it('fails when model references are broken', () => {
