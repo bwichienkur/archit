@@ -1,6 +1,5 @@
 using Archit.Api.Cad;
 using Archit.Api.Projects;
-using System.Collections.Concurrent;
 
 var builder = WebApplication.CreateBuilder(args);
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").GetChildren()
@@ -14,7 +13,6 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     if (allowedOrigins.Length == 0 && builder.Environment.IsDevelopment()) policy.SetIsOriginAllowed(_ => true);
     else if (allowedOrigins.Length > 0) policy.WithOrigins(allowedOrigins);
 }));
-builder.Services.AddSingleton<ConcurrentDictionary<Guid, CadImportJob>>();
 builder.Services.AddSingleton<ExternalCadImportProvider>();
 builder.Services.AddSingleton<UnconfiguredCadImportProvider>();
 builder.Services.AddSingleton<ICadImportProvider>(services =>
@@ -24,6 +22,7 @@ builder.Services.AddSingleton<ICadImportProvider>(services =>
 });
 builder.Services.AddSingleton<ICadImportQueue, InMemoryCadImportQueue>();
 builder.Services.AddSingleton<ICadArtifactStore, LocalCadArtifactStore>();
+builder.Services.AddSingleton<ICadImportJobStore, LocalCadImportJobStore>();
 builder.Services.AddHostedService<CadImportWorker>();
 builder.Services.AddSingleton<IProjectRepository, InMemoryProjectRepository>();
 
@@ -43,7 +42,7 @@ app.MapPost("/api/cad/imports", async (
     ICadImportProvider provider,
     ICadArtifactStore artifacts,
     ICadImportQueue queue,
-    ConcurrentDictionary<Guid, CadImportJob> jobs,
+    ICadImportJobStore jobs,
     CancellationToken cancellationToken) =>
 {
     if (!request.HasFormContentType)
@@ -75,19 +74,22 @@ app.MapPost("/api/cad/imports", async (
     {
         await using var source = file.OpenReadStream();
         await artifacts.SaveSourceAsync(id, safeFileName, source, cancellationToken);
-        jobs[id] = queued;
+        await jobs.SaveAsync(queued, cancellationToken);
         await queue.EnqueueAsync(id, cancellationToken);
         return Results.Accepted($"/api/cad/imports/{id}", queued);
     }
     catch (Exception ex)
     {
-        jobs.TryRemove(id, out _);
+        await jobs.DeleteAsync(id, CancellationToken.None);
         return Results.Problem(ex.Message, statusCode: StatusCodes.Status500InternalServerError);
     }
 });
 
-app.MapGet("/api/cad/imports/{id:guid}", (Guid id, ConcurrentDictionary<Guid, CadImportJob> jobs) =>
-    jobs.TryGetValue(id, out var job) ? Results.Ok(job) : Results.NotFound());
+app.MapGet("/api/cad/imports/{id:guid}", async (Guid id, ICadImportJobStore jobs, CancellationToken cancellationToken) =>
+{
+    var job = await jobs.GetAsync(id, cancellationToken);
+    return job is null ? Results.NotFound() : Results.Ok(job);
+});
 
 app.MapPost("/api/projects", async (CreateProjectRequest request, IProjectRepository repository, CancellationToken cancellationToken) =>
 {
