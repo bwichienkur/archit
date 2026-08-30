@@ -28,6 +28,8 @@ export type OpeningCandidate = {
   height: number;
   sillHeight?: number;
   subtype?: string;
+  handing?: 'left' | 'right';
+  swing?: 'in' | 'out';
   hostWallCandidateId?: string;
   offsetFromWallStart?: number;
   evidence: SemanticEvidence;
