@@ -1,5 +1,6 @@
 export type ProjectRecord = {
   id: string;
+  tenantId: string | null;
   name: string;
   createdAt: string;
   updatedAt: string;
@@ -18,7 +19,7 @@ export type ProjectRevision<TModel = unknown> = {
 };
 
 export interface ProjectGateway {
-  createProject(name: string): Promise<ProjectRecord>;
+  createProject(name: string, tenantId?: string | null): Promise<ProjectRecord>;
   listProjects(): Promise<ProjectRecord[]>;
   getProject(projectId:string):Promise<ProjectRecord>;
   createRevision<TModel>(projectId: string, input: {
@@ -36,11 +37,11 @@ export interface ProjectGateway {
 export class HttpProjectGateway implements ProjectGateway {
   constructor(private readonly baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5080') {}
 
-  async createProject(name: string): Promise<ProjectRecord> {
+  async createProject(name: string, tenantId: string | null = null): Promise<ProjectRecord> {
     const response = await fetch(`${this.baseUrl}/api/projects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, tenantId }),
     });
     return readJson<ProjectRecord>(response);
   }
