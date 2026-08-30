@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Archit.Api.Collaboration;
@@ -8,8 +9,9 @@ public sealed class ProjectHub : Hub
 
     public async Task JoinProject(Guid projectId,string userId,string displayName,string role)
     {
+        var identity=ResolveIdentity(userId,displayName,role);
         await Groups.AddToGroupAsync(Context.ConnectionId,GroupName(projectId));
-        Presence.UpsertPresence(projectId,Context.ConnectionId,userId,displayName,role);
+        Presence.UpsertPresence(projectId,Context.ConnectionId,identity.UserId,identity.DisplayName,identity.Role);
         await Clients.Group(GroupName(projectId)).SendAsync("presenceChanged",Presence.Snapshot(projectId));
         await Clients.Caller.SendAsync("editLeasesChanged",Presence.ActiveLeases(projectId));
     }
@@ -32,7 +34,8 @@ public sealed class ProjectHub : Hub
     {
         try
         {
-            var lease=Presence.AcquireLease(projectId,objectKind,objectId,userId,Context.ConnectionId,TimeSpan.FromSeconds(ttlSeconds));
+            var identity=ResolveIdentity(userId,userId,"viewer");
+            var lease=Presence.AcquireLease(projectId,objectKind,objectId,identity.UserId,Context.ConnectionId,TimeSpan.FromSeconds(ttlSeconds));
             await Clients.Group(GroupName(projectId)).SendAsync("editLeasesChanged",Presence.ActiveLeases(projectId));
             return lease;
         }
@@ -54,6 +57,16 @@ public sealed class ProjectHub : Hub
             await Clients.Group(GroupName(projectId)).SendAsync("editLeasesChanged",Presence.ActiveLeases(projectId));
         }
         await base.OnDisconnectedAsync(exception);
+    }
+
+    private (string UserId,string DisplayName,string Role) ResolveIdentity(string fallbackUserId,string fallbackDisplayName,string fallbackRole)
+    {
+        var principal=Context.User;
+        if(principal?.Identity?.IsAuthenticated!=true)return(fallbackUserId,fallbackDisplayName,fallbackRole);
+        var userId=principal.FindFirstValue("sub")??principal.FindFirstValue(ClaimTypes.NameIdentifier)??principal.Identity.Name??throw new HubException("Authenticated user is missing a stable subject identifier.");
+        var displayName=principal.Identity.Name??principal.FindFirstValue("name")??userId;
+        var role=principal.FindFirstValue(ClaimTypes.Role)??principal.FindFirstValue("role")??"viewer";
+        return(userId,displayName,role);
     }
 
     public static string GroupName(Guid projectId) => $"project:{projectId:N}";
