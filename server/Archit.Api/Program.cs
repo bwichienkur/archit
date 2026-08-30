@@ -11,10 +11,11 @@ var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get
     .ToArray();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
 {
-    policy.AllowAnyHeader().AllowAnyMethod();
+    policy.AllowAnyHeader().AllowAnyMethod().AllowCredentials();
     if (allowedOrigins.Length == 0 && builder.Environment.IsDevelopment()) policy.SetIsOriginAllowed(_ => true);
     else if (allowedOrigins.Length > 0) policy.WithOrigins(allowedOrigins);
 }));
+builder.Services.AddSignalR();
 builder.Services.AddSingleton<ExternalCadImportProvider>();
 builder.Services.AddSingleton<UnconfiguredCadImportProvider>();
 builder.Services.AddSingleton<ICadImportProvider>(services =>
@@ -29,6 +30,7 @@ builder.Services.AddHostedService<CadImportWorker>();
 builder.Services.AddSingleton<IProjectRepository, LocalProjectRepository>();
 builder.Services.AddSingleton<ICatalogRepository, LocalCatalogRepository>();
 builder.Services.AddSingleton<ICollaborationRepository, LocalCollaborationRepository>();
+builder.Services.AddSingleton<IProjectEventBroadcaster, SignalRProjectEventBroadcaster>();
 
 var app = builder.Build();
 app.UseCors();
@@ -157,11 +159,12 @@ app.MapGet("/api/catalog/products/{id:guid}", async (Guid id, ICatalogRepository
 app.MapGet("/api/catalog/products", async (string? manufacturer, string? category, string? q, ICatalogRepository repository, CancellationToken cancellationToken) =>
     Results.Ok(await repository.SearchAsync(manufacturer, category, q, cancellationToken)));
 
-app.MapPost("/api/projects/{projectId:guid}/collaboration/events", async (Guid projectId, CreateCollaborationEventRequest request, ICollaborationRepository repository, CancellationToken cancellationToken) =>
+app.MapPost("/api/projects/{projectId:guid}/collaboration/events", async (Guid projectId, CreateCollaborationEventRequest request, ICollaborationRepository repository, IProjectEventBroadcaster broadcaster, CancellationToken cancellationToken) =>
 {
     try
     {
         var created = await repository.AddEventAsync(projectId, request, cancellationToken);
+        await broadcaster.BroadcastAsync(projectId, "projectEvent", created, cancellationToken);
         return Results.Created($"/api/projects/{projectId}/collaboration/events/{created.Id}", created);
     }
     catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
@@ -170,11 +173,12 @@ app.MapPost("/api/projects/{projectId:guid}/collaboration/events", async (Guid p
 app.MapGet("/api/projects/{projectId:guid}/collaboration/events", async (Guid projectId, ICollaborationRepository repository, CancellationToken cancellationToken) =>
     Results.Ok(await repository.ListEventsAsync(projectId, cancellationToken)));
 
-app.MapPost("/api/projects/{projectId:guid}/collaboration/comments", async (Guid projectId, CreateCommentRequest request, ICollaborationRepository repository, CancellationToken cancellationToken) =>
+app.MapPost("/api/projects/{projectId:guid}/collaboration/comments", async (Guid projectId, CreateCommentRequest request, ICollaborationRepository repository, IProjectEventBroadcaster broadcaster, CancellationToken cancellationToken) =>
 {
     try
     {
         var created = await repository.AddCommentAsync(projectId, request, cancellationToken);
+        await broadcaster.BroadcastAsync(projectId, "commentCreated", created, cancellationToken);
         return Results.Created($"/api/projects/{projectId}/collaboration/comments/{created.Id}", created);
     }
     catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
@@ -183,11 +187,18 @@ app.MapPost("/api/projects/{projectId:guid}/collaboration/comments", async (Guid
 app.MapGet("/api/projects/{projectId:guid}/collaboration/comments", async (Guid projectId, bool? includeResolved, ICollaborationRepository repository, CancellationToken cancellationToken) =>
     Results.Ok(await repository.ListCommentsAsync(projectId, includeResolved ?? true, cancellationToken)));
 
-app.MapPost("/api/projects/{projectId:guid}/collaboration/comments/{commentId:guid}/resolve", async (Guid projectId, Guid commentId, ResolveCommentRequest request, ICollaborationRepository repository, CancellationToken cancellationToken) =>
+app.MapPost("/api/projects/{projectId:guid}/collaboration/comments/{commentId:guid}/resolve", async (Guid projectId, Guid commentId, ResolveCommentRequest request, ICollaborationRepository repository, IProjectEventBroadcaster broadcaster, CancellationToken cancellationToken) =>
 {
-    try { return Results.Ok(await repository.ResolveCommentAsync(projectId, commentId, request, cancellationToken)); }
+    try
+    {
+        var resolved = await repository.ResolveCommentAsync(projectId, commentId, request, cancellationToken);
+        await broadcaster.BroadcastAsync(projectId, "commentResolved", resolved, cancellationToken);
+        return Results.Ok(resolved);
+    }
     catch (KeyNotFoundException) { return Results.NotFound(); }
     catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
+
+app.MapHub<ProjectHub>("/hubs/projects");
 
 app.Run();
