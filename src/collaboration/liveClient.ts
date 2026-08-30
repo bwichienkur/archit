@@ -4,12 +4,18 @@ import type { CollaborationComment, CollaborationEvent, CollaborationRole } from
 export type LivePresence={projectId:string;connectionId:string;userId:string;displayName:string;role:string;selectedKind:string|null;selectedId:string|null;lastSeenAt:string};
 export type LiveEditLease={projectId:string;objectKind:string;objectId:string;userId:string;connectionId:string;acquiredAt:string;expiresAt:string};
 export type CollaborationLiveHandlers={onPresence?(items:LivePresence[]):void;onLeases?(items:LiveEditLease[]):void;onProjectEvent?(event:CollaborationEvent):void;onCommentCreated?(comment:CollaborationComment):void;onCommentResolved?(comment:CollaborationComment):void;onReconnecting?(error?:Error):void;onReconnected?():void;onClosed?(error?:Error):void};
+export type LiveAccessTokenFactory=()=>string|Promise<string>;
 
 export class ProjectLiveClient{
   private readonly connection:HubConnection;
   private joined:{projectId:string;userId:string;displayName:string;role:CollaborationRole}|null=null;
-  constructor(baseUrl=import.meta.env.VITE_API_URL??'http://localhost:5080',handlers:CollaborationLiveHandlers={}){
-    this.connection=new HubConnectionBuilder().withUrl(`${baseUrl.replace(/\/$/,'')}/hubs/projects`).withAutomaticReconnect([0,1000,3000,10000]).configureLogging(LogLevel.Warning).build();
+  constructor(baseUrl=import.meta.env.VITE_API_URL??'http://localhost:5080',handlers:CollaborationLiveHandlers={},accessTokenFactory?:LiveAccessTokenFactory){
+    const builder=new HubConnectionBuilder();
+    this.connection=builder
+      .withUrl(`${baseUrl.replace(/\/$/,'')}/hubs/projects`,accessTokenFactory?{accessTokenFactory}:undefined)
+      .withAutomaticReconnect([0,1000,3000,10000])
+      .configureLogging(LogLevel.Warning)
+      .build();
     this.connection.on('presenceChanged',(items:LivePresence[])=>handlers.onPresence?.(items));
     this.connection.on('editLeasesChanged',(items:LiveEditLease[])=>handlers.onLeases?.(items));
     this.connection.on('projectEvent',(event:CollaborationEvent)=>handlers.onProjectEvent?.(event));
