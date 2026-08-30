@@ -36,6 +36,12 @@ export function detectOpeningCandidates(
     const sillHeight = classification.kind === 'window'
       ? propertyNumber(entity, ['sillheight', 'sill', 'baseheight', 'elevation'])
       : undefined;
+    const handing = classification.kind === 'door'
+      ? parseHanding(propertyString(entity, ['handing', 'hand', 'doorhand', 'hingeside']))
+      : undefined;
+    const swing = classification.kind === 'door'
+      ? parseSwing(propertyString(entity, ['swing', 'swingdirection', 'doorswing', 'swingdir']))
+      : undefined;
 
     const confidence = Math.min(0.99,
       classification.confidence + (host ? 0.08 : 0) + (classification.source === 'metadata' ? 0.05 : 0));
@@ -48,6 +54,8 @@ export function detectOpeningCandidates(
       height,
       sillHeight,
       subtype: propertyString(entity, ['subtype', 'style', 'doorstyle', 'windowstyle']) ?? entity.sourceBlockName,
+      handing,
+      swing,
       hostWallCandidateId: host?.wall.id,
       offsetFromWallStart: host?.offsetFromWallStart,
       evidence: {
@@ -83,6 +91,22 @@ function kindFromText(value?: string): 'door' | 'window' | null {
   if (/\bdoor\b|\bdr\b|\bentry\b/.test(normalized)) return 'door';
   if (/\bwindow\b|\bwin\b|\bw dw\b/.test(normalized)) return 'window';
   return null;
+}
+
+function parseHanding(value?: string): 'left' | 'right' | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+  if (/^(left|lh|left hand|left handed|hinge left)$/.test(normalized)) return 'left';
+  if (/^(right|rh|right hand|right handed|hinge right)$/.test(normalized)) return 'right';
+  return undefined;
+}
+
+function parseSwing(value?: string): 'in' | 'out' | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ');
+  if (/^(in|inswing|in swing|swing in)$/.test(normalized)) return 'in';
+  if (/^(out|outswing|out swing|swing out)$/.test(normalized)) return 'out';
+  return undefined;
 }
 
 function entityCenter(entity: CadEntity): CadPoint | null {
