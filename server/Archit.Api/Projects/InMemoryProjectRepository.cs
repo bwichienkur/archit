@@ -7,11 +7,11 @@ public sealed class InMemoryProjectRepository : IProjectRepository
     private readonly ConcurrentDictionary<Guid, ProjectRecord> _projects = new();
     private readonly ConcurrentDictionary<Guid, ConcurrentDictionary<Guid, ProjectRevision>> _revisions = new();
 
-    public Task<ProjectRecord> CreateAsync(string name, CancellationToken cancellationToken)
+    public Task<ProjectRecord> CreateAsync(string name, Guid? tenantId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var now = DateTimeOffset.UtcNow;
-        var project = new ProjectRecord(Guid.NewGuid(), name.Trim(), now, now);
+        var project = new ProjectRecord(Guid.NewGuid(), tenantId, name.Trim(), now, now);
         _projects[project.Id] = project;
         _revisions.TryAdd(project.Id, new ConcurrentDictionary<Guid, ProjectRevision>());
         return Task.FromResult(project);
