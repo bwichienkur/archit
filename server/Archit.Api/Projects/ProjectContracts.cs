@@ -4,6 +4,7 @@ namespace Archit.Api.Projects;
 
 public sealed record ProjectRecord(
     Guid Id,
+    Guid? TenantId,
     string Name,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
@@ -19,7 +20,7 @@ public sealed record ProjectRevision(
     JsonElement Model,
     string? Note = null);
 
-public sealed record CreateProjectRequest(string Name);
+public sealed record CreateProjectRequest(string Name, Guid? TenantId = null);
 
 public sealed record CreateRevisionRequest(
     Guid? ParentRevisionId,
@@ -31,7 +32,7 @@ public sealed record CreateRevisionRequest(
 
 public interface IProjectRepository
 {
-    Task<ProjectRecord> CreateAsync(string name, CancellationToken cancellationToken);
+    Task<ProjectRecord> CreateAsync(string name, Guid? tenantId, CancellationToken cancellationToken);
     Task<ProjectRecord?> GetAsync(Guid projectId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProjectRecord>> ListAsync(CancellationToken cancellationToken);
     Task<ProjectRevision> AddRevisionAsync(Guid projectId, CreateRevisionRequest request, CancellationToken cancellationToken);
