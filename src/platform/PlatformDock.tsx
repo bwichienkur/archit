@@ -7,6 +7,7 @@ import { BuildingModelScene3D } from '../editor/BuildingModelScene3D';
 import { BuilderConfiguratorPanel } from '../builder/BuilderConfiguratorPanel';
 import { CollaborationWorkspace } from '../collaboration/CollaborationWorkspace';
 import { ScheduleExportPanel } from '../export/ScheduleExportPanel';
+import { ServerExportPanel } from '../export/ServerExportPanel';
 import { ProjectWorkspace } from '../projects/ProjectWorkspace';
 import { usePlatformWorkspaceStore, type PlatformPanel } from './store';
 
@@ -31,7 +32,7 @@ export function PlatformDock(){
         {panel==='projects'&&<ProjectWorkspace/>}
         {panel==='3d'&&<>{model?<div className="platform-3d"><Canvas camera={{position:[9,8,10],fov:45}} shadows><ambientLight intensity={1.2}/><directionalLight castShadow position={[8,12,7]} intensity={2}/><Grid args={[30,30]} cellSize={.5} sectionSize={2}/><BuildingModelScene3D model={model} selectedId={selectedId} showFloors showCeilings={false} onSelect={(kind,id)=>{if(kind==='wall'||kind==='room')select({kind,id});}}/><OrbitControls makeDefault/></Canvas></div>:<EmptyState text="Accept semantic candidates to create a BuildingModelV2 before opening the advanced 3D workspace."/>}</>}
         {panel==='builder'&&<BuilderConfiguratorPanel session={session} productsById={productsById} onStatusChange={setSelectionStatus} onRemove={removeTargetSelection}/>} 
-        {panel==='schedules'&&<>{model?<ScheduleExportPanel model={model} onDownload={download}/>:<EmptyState text="A BuildingModelV2 is required before construction schedules can be generated."/>}</>}
+        {panel==='schedules'&&<>{model?<><ScheduleExportPanel model={model} onDownload={download}/><ServerExportPanel/></>:<EmptyState text="A BuildingModelV2 is required before construction schedules can be generated."/>}</>}
         {panel==='collaboration'&&<CollaborationWorkspace/>}
       </div>
     </section>}
