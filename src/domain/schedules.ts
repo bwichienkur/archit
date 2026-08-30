@@ -53,6 +53,33 @@ export function buildOpeningSchedule(model: BuildingModelV2): OpeningScheduleRow
     });
 }
 
+export function openingScheduleToCsv(rows: OpeningScheduleRow[], geometryUnits: BuildingModelV2['geometryUnits']): string {
+  const headers = [
+    'Mark','Type','Level','Host Wall','Width','Height','Sill Height','Units','Subtype','Handing','Swing','Validation State','Opening ID','Source CAD Entity IDs',
+  ];
+  const lines = rows.map(row => [
+    row.mark,
+    row.kind,
+    row.levelName,
+    row.hostWallName,
+    number(row.width),
+    number(row.height),
+    row.sillHeight == null ? '' : number(row.sillHeight),
+    geometryUnits,
+    row.subtype ?? '',
+    row.handing ?? '',
+    row.swing ?? '',
+    row.validationState,
+    row.openingId,
+    row.sourceCadEntityIds.join(';'),
+  ].map(csvCell).join(','));
+  return [headers.map(csvCell).join(','), ...lines].join('\r\n');
+}
+
+export function buildOpeningScheduleCsv(model: BuildingModelV2): string {
+  return openingScheduleToCsv(buildOpeningSchedule(model), model.geometryUnits);
+}
+
 function compareOpenings(
   a: BuildingModelV2['openings'][number],
   b: BuildingModelV2['openings'][number],
@@ -67,4 +94,12 @@ function compareOpenings(
   const offset = a.offsetFromWallStart - b.offsetFromWallStart;
   if (offset !== 0) return offset;
   return a.id.localeCompare(b.id);
+}
+
+function number(value: number) {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(6)));
+}
+
+function csvCell(value: string) {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
