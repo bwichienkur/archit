@@ -4,6 +4,7 @@ import { currentAuthSession } from '../auth/oidc';
 import { HttpCadImportGateway } from '../cad/importer';
 import { useCadStore } from '../cad/store';
 import { useBuildingEditorStore } from '../editor/buildingStore';
+import { RevisionHistoryPanel } from '../revisions/RevisionHistoryPanel';
 import { useSemanticStore } from '../semantic/store';
 import { setActiveProject } from './activeProject';
 import { HttpProjectGateway, type ProjectRecord, type ProjectRevision } from './gateway';
@@ -81,6 +82,7 @@ export function ProjectWorkspace(){
         <button disabled={opening===summary.project.id} onClick={()=>void open(summary)}>{opening===summary.project.id?'Opening…':isActive?'Reload project':'Open project'}</button>
       </article>;
     })}</div>
+    {activeProjectId&&<RevisionHistoryPanel projectId={activeProjectId}/>} 
   </section>;
 }
 
