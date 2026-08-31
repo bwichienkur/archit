@@ -33,7 +33,7 @@ public sealed class CatalogImportService
     {
         if(request.Products.Count==0)throw new InvalidOperationException("At least one reviewed catalog product is required.");
         var duplicates=request.Products.GroupBy(item=>item.ExternalId,StringComparer.OrdinalIgnoreCase).Where(group=>group.Count()>1).Select(group=>group.Key).ToArray();
-        if(duplicates.Length)throw new InvalidOperationException($"Duplicate catalog product ids: {string.Join(", ",duplicates)}.");
+        if(duplicates.Length>0)throw new InvalidOperationException($"Duplicate catalog product ids: {string.Join(", ",duplicates)}.");
         var records=new List<CatalogProductRecord>(request.Products.Count);
         foreach(var product in request.Products)records.Add(await repository.UpsertAsync(product,cancellationToken));
         return new ApplyCatalogImportResult(records.Count,records);
