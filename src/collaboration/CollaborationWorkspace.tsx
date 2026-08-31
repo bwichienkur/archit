@@ -3,6 +3,7 @@ import { Users } from 'lucide-react';
 import { useBuildingEditorStore } from '../editor/buildingStore';
 import { useProjectPersistenceStore } from '../projects/store';
 import { CollaborationPanel } from './CollaborationPanel';
+import { ConflictResolutionPanel } from './ConflictResolutionPanel';
 import type { CollaborationComment, CollaborationEvent, ObjectReference } from './events';
 import { HttpCollaborationGateway } from './gateway';
 import type { LiveEditLease, LivePresence } from './liveClient';
@@ -84,6 +85,7 @@ export function CollaborationWorkspace(){
       <button disabled={!selectedTarget||!body.trim()||busy||!live} onClick={()=>void addComment()}>{busy?'Posting…':'Post comment'}</button>
     </section>
     <CollaborationPanel events={events} comments={comments} onResolveComment={id=>void resolveComment(id)} onSelectTarget={selectTarget}/>
+    <ConflictResolutionPanel projectId={projectId}/>
   </div>;
 }
 
