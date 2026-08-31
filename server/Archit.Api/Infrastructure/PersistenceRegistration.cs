@@ -13,6 +13,7 @@ public static class PersistenceRegistration
     public static IServiceCollection AddConfiguredPersistence(this IServiceCollection services,IConfiguration configuration)
     {
         services.TryAddSingleton<ExportProcessorRegistry>();
+        services.TryAddSingleton<CatalogImportService>();
 
         var connectionString=configuration.GetConnectionString("Archit")??Environment.GetEnvironmentVariable("ARCHIT_DATABASE_URL");
         if(!string.IsNullOrWhiteSpace(connectionString))
