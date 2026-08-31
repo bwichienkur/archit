@@ -2,6 +2,7 @@ import { useRef,useState } from 'react';
 import { FileSpreadsheet,Upload } from 'lucide-react';
 import { HttpCatalogGateway,type CatalogImportPreview } from './catalogGateway';
 import { usePlatformWorkspaceStore } from '../platform/store';
+import './catalogImport.css';
 
 const gateway=new HttpCatalogGateway();
 
