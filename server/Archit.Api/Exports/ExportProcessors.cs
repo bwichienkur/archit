@@ -39,6 +39,42 @@ public sealed class JsonExportProcessor : IExportProcessor
     internal static string FileName(ExportJobRecord job,ProjectRevision revision,string extension)=>$"archit-{job.ProjectId:N}-{revision.Id:N}.{extension}";
 }
 
+public sealed class CsvExportProcessor : IExportProcessor
+{
+    public string Format=>"csv";
+
+    public Task<ExportArtifact> ProcessAsync(ExportJobRecord job,ProjectRevision revision,CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var model=BuildingModelJson.Parse(revision.Model);
+        var wallById=model.Walls.ToDictionary(wall=>wall.Id,StringComparer.Ordinal);
+        var levelById=model.Levels.ToDictionary(level=>level.Id,StringComparer.Ordinal);
+        var counters=new Dictionary<string,int>(StringComparer.Ordinal){{"door",0},{"window",0},{"cased-opening",0}};
+        var prefixes=new Dictionary<string,string>(StringComparer.Ordinal){{"door","D"},{"window","W"},{"cased-opening","O"}};
+        var openings=model.Openings.OrderBy(opening=>wallById.TryGetValue(opening.HostWallId,out var wall)?wall.LevelId:string.Empty,StringComparer.Ordinal)
+            .ThenBy(opening=>wallById.TryGetValue(opening.HostWallId,out var wall)?wall.Name:opening.HostWallId,StringComparer.Ordinal)
+            .ThenBy(opening=>opening.Offset).ThenBy(opening=>opening.Id,StringComparer.Ordinal).ToArray();
+        var rows=new List<string>{string.Join(',',new[]{"Mark","Type","Level","Host Wall","Width","Height","Sill Height","Units","Subtype","Handing","Swing","Validation State","Opening ID","Source CAD Entity IDs"}.Select(CsvCell))};
+        foreach(var opening in openings)
+        {
+            if(!wallById.TryGetValue(opening.HostWallId,out var wall))throw new InvalidOperationException($"Opening {opening.Id} references missing host wall {opening.HostWallId}.");
+            if(!levelById.TryGetValue(wall.LevelId,out var level))throw new InvalidOperationException($"Host wall {wall.Id} references missing level {wall.LevelId}.");
+            if(!counters.ContainsKey(opening.Kind)||!prefixes.ContainsKey(opening.Kind))throw new InvalidOperationException($"Unsupported opening kind '{opening.Kind}'.");
+            counters[opening.Kind]++;
+            var mark=$"{prefixes[opening.Kind]}{counters[opening.Kind]:00}";
+            rows.Add(string.Join(',',new[]{
+                mark,opening.Kind,level.Name,wall.Name,Number(opening.Width),Number(opening.Height),opening.Kind=="window"?Number(opening.SillHeight??0):string.Empty,model.GeometryUnits,
+                opening.Subtype??string.Empty,opening.Handing??string.Empty,opening.Swing??string.Empty,opening.ValidationState,opening.Id,string.Join(';',opening.SourceCadEntityIds)
+            }.Select(CsvCell)));
+        }
+        var bytes=Encoding.UTF8.GetBytes(string.Join("\r\n",rows));
+        return Task.FromResult(new ExportArtifact(JsonExportProcessor.FileName(job,revision,"csv"),"text/csv; charset=utf-8",bytes));
+    }
+
+    private static string Number(double value)=>value.ToString("0.######",CultureInfo.InvariantCulture);
+    private static string CsvCell(string value)=>value.IndexOfAny(['"',',','\r','\n'])>=0?$"\"{value.Replace("\"","\"\"")}\"":value;
+}
+
 public sealed class SvgExportProcessor : IExportProcessor
 {
     public string Format => "svg";
@@ -149,7 +185,7 @@ public sealed class ExportProcessorRegistry
 
     public ExportProcessorRegistry()
     {
-        IExportProcessor[] builtIns=[new JsonExportProcessor(),new SvgExportProcessor(),new GltfExportProcessor()];
+        IExportProcessor[] builtIns=[new JsonExportProcessor(),new CsvExportProcessor(),new SvgExportProcessor(),new GltfExportProcessor()];
         _processors=builtIns.ToDictionary(processor=>processor.Format,StringComparer.OrdinalIgnoreCase);
     }
 
@@ -161,12 +197,13 @@ public sealed class ExportProcessorRegistry
 }
 
 internal sealed record Point2(double X,double Y);
-internal sealed record ExportWall(string Id,string Name,Point2 Start,Point2 End,double Thickness,double Height,double BaseElevation,IReadOnlyList<string> SourceCadEntityIds);
-internal sealed record ExportOpening(string Id,string Kind,string HostWallId,double Offset,double Width);
+internal sealed record ExportLevel(string Id,string Name);
+internal sealed record ExportWall(string Id,string LevelId,string Name,Point2 Start,Point2 End,double Thickness,double Height,double BaseElevation,IReadOnlyList<string> SourceCadEntityIds);
+internal sealed record ExportOpening(string Id,string Kind,string HostWallId,double Offset,double Width,double Height,double? SillHeight,string? Subtype,string? Handing,string? Swing,string ValidationState,IReadOnlyList<string> SourceCadEntityIds);
 internal sealed record ExportRoom(string Id,IReadOnlyList<Point2> Boundary);
 internal sealed record ExportCabinet(string Id,Point2 Origin,double Rotation,double Width,double Depth,double Height);
 internal sealed record ExportFixture(string Id,string Category,Point2 Origin,double Rotation,double? Width,double? Depth,double? Height);
-internal sealed record ExportBuildingModel(int SchemaVersion,string ProjectId,string ProjectName,string GeometryUnits,IReadOnlyList<ExportWall> Walls,IReadOnlyList<ExportOpening> Openings,IReadOnlyList<ExportRoom> Rooms,IReadOnlyList<ExportCabinet> Cabinets,IReadOnlyList<ExportFixture> Fixtures)
+internal sealed record ExportBuildingModel(int SchemaVersion,string ProjectId,string ProjectName,string GeometryUnits,IReadOnlyList<ExportLevel> Levels,IReadOnlyList<ExportWall> Walls,IReadOnlyList<ExportOpening> Openings,IReadOnlyList<ExportRoom> Rooms,IReadOnlyList<ExportCabinet> Cabinets,IReadOnlyList<ExportFixture> Fixtures)
 {
     public (double MinX,double MinY,double MaxX,double MaxY) Bounds()
     {
@@ -180,21 +217,24 @@ internal static class BuildingModelJson
 {
     public static ExportBuildingModel Parse(JsonElement root)
     {
-        if(root.ValueKind!=JsonValueKind.Object||Int(root,"schemaVersion")!=2)throw new InvalidOperationException("SVG/glTF export requires a BuildingModelV2 revision snapshot.");
-        var units=String(root,"geometryUnits");if(string.IsNullOrWhiteSpace(units)||units=="unitless")throw new InvalidOperationException("SVG/glTF export requires calibrated BuildingModelV2 geometry units.");
+        if(root.ValueKind!=JsonValueKind.Object||Int(root,"schemaVersion")!=2)throw new InvalidOperationException("CSV/SVG/glTF export requires a BuildingModelV2 revision snapshot.");
+        var units=String(root,"geometryUnits");if(string.IsNullOrWhiteSpace(units)||units=="unitless")throw new InvalidOperationException("CSV/SVG/glTF export requires calibrated BuildingModelV2 geometry units.");
         return new ExportBuildingModel(2,String(root,"projectId"),String(root,"projectName"),units,
-            JsonArray(root,"walls").Select(Wall).ToArray(),JsonArray(root,"openings").Select(Opening).ToArray(),JsonArray(root,"rooms").Select(Room).ToArray(),JsonArray(root,"cabinets").Select(Cabinet).ToArray(),JsonArray(root,"fixtures").Select(Fixture).ToArray());
+            JsonArray(root,"levels").Select(Level).ToArray(),JsonArray(root,"walls").Select(Wall).ToArray(),JsonArray(root,"openings").Select(Opening).ToArray(),JsonArray(root,"rooms").Select(Room).ToArray(),JsonArray(root,"cabinets").Select(Cabinet).ToArray(),JsonArray(root,"fixtures").Select(Fixture).ToArray());
     }
     public static double MetersPerUnit(string unit)=>unit switch{"inches"=>.0254,"feet"=>.3048,"millimeters"=>.001,"centimeters"=>.01,"meters"=>1,_=>throw new InvalidOperationException($"Unsupported geometry unit '{unit}'.")};
-    private static ExportWall Wall(JsonElement e)=>new(String(e,"id"),String(e,"name"),Point(e,"start"),Point(e,"end"),Double(e,"thickness"),Double(e,"height"),Double(e,"baseElevation"),Lineage(e));
-    private static ExportOpening Opening(JsonElement e)=>new(String(e,"id"),String(e,"kind"),String(e,"hostWallId"),Double(e,"offsetFromWallStart"),Double(e,"width"));
+    private static ExportLevel Level(JsonElement e)=>new(String(e,"id"),String(e,"name"));
+    private static ExportWall Wall(JsonElement e)=>new(String(e,"id"),String(e,"levelId"),String(e,"name"),Point(e,"start"),Point(e,"end"),Double(e,"thickness"),Double(e,"height"),Double(e,"baseElevation"),LineageIds(e));
+    private static ExportOpening Opening(JsonElement e)=>new(String(e,"id"),String(e,"kind"),String(e,"hostWallId"),Double(e,"offsetFromWallStart"),Double(e,"width"),Double(e,"height"),NullableDouble(e,"sillHeight"),NullableString(e,"subtype"),NullableString(e,"handing"),NullableString(e,"swing"),LineageState(e),LineageIds(e));
     private static ExportRoom Room(JsonElement e)=>new(String(e,"id"),JsonArray(e,"boundary").Select(p=>new Point2(Double(p,"x"),Double(p,"y"))).ToArray());
     private static ExportCabinet Cabinet(JsonElement e)=>new(String(e,"id"),Point(e,"origin"),Double(e,"rotation"),Double(e,"width"),Double(e,"depth"),Double(e,"height"));
     private static ExportFixture Fixture(JsonElement e)=>new(String(e,"id"),String(e,"category"),Point(e,"origin"),Double(e,"rotation"),NullableDouble(e,"width"),NullableDouble(e,"depth"),NullableDouble(e,"height"));
     private static Point2 Point(JsonElement e,string name){var p=e.GetProperty(name);return new Point2(Double(p,"x"),Double(p,"y"));}
-    private static IReadOnlyList<string> Lineage(JsonElement e){if(!e.TryGetProperty("lineage",out var lineage)||!lineage.TryGetProperty("sourceCadEntityIds",out var ids)||ids.ValueKind!=JsonValueKind.Array)return System.Array.Empty<string>();return ids.EnumerateArray().Where(x=>x.ValueKind==JsonValueKind.String).Select(x=>x.GetString()!).ToArray();}
+    private static IReadOnlyList<string> LineageIds(JsonElement e){if(!e.TryGetProperty("lineage",out var lineage)||!lineage.TryGetProperty("sourceCadEntityIds",out var ids)||ids.ValueKind!=JsonValueKind.Array)return System.Array.Empty<string>();return ids.EnumerateArray().Where(x=>x.ValueKind==JsonValueKind.String).Select(x=>x.GetString()!).ToArray();}
+    private static string LineageState(JsonElement e)=>e.TryGetProperty("lineage",out var lineage)?String(lineage,"validationState"):string.Empty;
     private static IEnumerable<JsonElement> JsonArray(JsonElement e,string name)=>e.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.Array?value.EnumerateArray():Enumerable.Empty<JsonElement>();
     private static string String(JsonElement e,string name)=>e.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.String?value.GetString()??string.Empty:string.Empty;
+    private static string? NullableString(JsonElement e,string name)=>e.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.String?value.GetString():null;
     private static int Int(JsonElement e,string name)=>e.TryGetProperty(name,out var value)&&value.TryGetInt32(out var number)?number:0;
     private static double Double(JsonElement e,string name)=>e.TryGetProperty(name,out var value)&&value.TryGetDouble(out var number)?number:0;
     private static double? NullableDouble(JsonElement e,string name)=>e.TryGetProperty(name,out var value)&&value.TryGetDouble(out var number)?number:null;
