@@ -8,6 +8,7 @@ import { isBuildingModelV2 } from '../projects/modelGuard';
 import { useProjectPersistenceStore } from '../projects/store';
 import { analyzeRevisionConflicts } from './conflicts';
 import { conflictKey,mergeBuildingModels,type ConflictChoice,type ConflictDecisions } from './merge';
+import './conflictResolution.css';
 
 const gateway=new HttpProjectGateway();
 type BimRevision=ProjectRevision<BuildingModelV2>;
