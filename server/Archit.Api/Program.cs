@@ -126,7 +126,13 @@ app.MapGet("/api/tenants/{tenantId:guid}", async (Guid tenantId, ITenantReposito
 app.MapPut("/api/tenants/{tenantId:guid}/memberships", async (Guid tenantId, UpsertMembershipRequest request, ITenantRepository repository, CancellationToken cancellationToken) => { try { return Results.Ok(await repository.UpsertMembershipAsync(tenantId, request, cancellationToken)); } catch (KeyNotFoundException) { return Results.NotFound(); } catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); } }).AddEndpointFilter(new TenantPermissionFilter("admin:manage"));
 app.MapGet("/api/tenants/{tenantId:guid}/memberships/{userId}", async (Guid tenantId, string userId, ITenantRepository repository, CancellationToken cancellationToken) => { var membership = await repository.GetMembershipAsync(tenantId, userId, cancellationToken); return membership is null ? Results.NotFound() : Results.Ok(membership); }).AddEndpointFilter(new TenantPermissionFilter("admin:manage"));
 
-app.MapPost("/api/projects/{projectId:guid}/exports", async (Guid projectId, CreateExportRequest request, IExportJobRepository repository, CancellationToken cancellationToken) => { if (!string.Equals(request.Format,"json",StringComparison.OrdinalIgnoreCase)) return Results.BadRequest(new { error = $"Server-side export format '{request.Format}' is not configured. JSON is currently available; DWG/DXF/IFC require format-specific providers." }); try { var job = await repository.CreateAsync(projectId, request, cancellationToken); return Results.Accepted($"/api/exports/{job.Id}", job); } catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); } }).AddEndpointFilter(new ProjectPermissionFilter("export:create"));
+app.MapGet("/api/exports/formats", (ExportProcessorRegistry processors) => Results.Ok(new { formats = processors.Formats.OrderBy(format => format, StringComparer.OrdinalIgnoreCase) }));
+app.MapPost("/api/projects/{projectId:guid}/exports", async (Guid projectId, CreateExportRequest request, ExportProcessorRegistry processors, IExportJobRepository repository, CancellationToken cancellationToken) =>
+{
+    if (!processors.Supports(request.Format)) return Results.BadRequest(new { error = $"Server-side export format '{request.Format}' is not configured.", availableFormats = processors.Formats.OrderBy(format => format, StringComparer.OrdinalIgnoreCase) });
+    try { var job = await repository.CreateAsync(projectId, request, cancellationToken); return Results.Accepted($"/api/exports/{job.Id}", job); }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
+}).AddEndpointFilter(new ProjectPermissionFilter("export:create"));
 app.MapGet("/api/projects/{projectId:guid}/exports", async (Guid projectId, IExportJobRepository repository, CancellationToken cancellationToken) => Results.Ok(await repository.ListAsync(projectId, cancellationToken))).AddEndpointFilter(new ProjectPermissionFilter("project:read"));
 app.MapGet("/api/exports/{jobId:guid}", async (Guid jobId, HttpContext context, TenantAccessService access, IExportJobRepository repository, CancellationToken cancellationToken) =>
 {
@@ -139,7 +145,23 @@ app.MapGet("/api/exports/{jobId:guid}/artifact", async (Guid jobId, HttpContext 
     var job = await repository.GetAsync(jobId, cancellationToken); if (job is null) return Results.NotFound();
     var decision = await access.CheckProjectAsync(context, job.ProjectId, "project:read", cancellationToken); if (!decision.Allowed) return decision.ToResult();
     if (job.Status != "completed" || string.IsNullOrWhiteSpace(job.ArtifactPath)) return Results.Conflict(new { error = "Export artifact is not ready." });
-    try { var stream = await artifacts.OpenAsync(job, cancellationToken); return Results.Stream(stream,"application/json",Path.GetFileName(job.ArtifactPath)); } catch (FileNotFoundException) { return Results.NotFound(); }
+    try
+    {
+        var stream = await artifacts.OpenAsync(job, cancellationToken);
+        var fileName = Path.GetFileName(job.ArtifactPath);
+        var contentType = Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".json" => "application/json",
+            ".csv" => "text/csv; charset=utf-8",
+            ".svg" => "image/svg+xml",
+            ".gltf" => "model/gltf+json",
+            ".glb" => "model/gltf-binary",
+            ".pdf" => "application/pdf",
+            _ => "application/octet-stream",
+        };
+        return Results.Stream(stream,contentType,fileName);
+    }
+    catch (FileNotFoundException) { return Results.NotFound(); }
 });
 
 app.MapHub<ProjectHub>("/hubs/projects");
