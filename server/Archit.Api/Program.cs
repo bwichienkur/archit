@@ -114,6 +114,21 @@ app.MapGet("/api/projects/{projectId:guid}/revisions/{revisionId:guid}", async (
 app.MapPut("/api/catalog/products", async (UpsertCatalogProductRequest request, ICatalogRepository repository, CancellationToken cancellationToken) => { try { return Results.Ok(await repository.UpsertAsync(request, cancellationToken)); } catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); } });
 app.MapGet("/api/catalog/products/{id:guid}", async (Guid id, ICatalogRepository repository, CancellationToken cancellationToken) => { var product = await repository.GetAsync(id, cancellationToken); return product is null ? Results.NotFound() : Results.Ok(product); });
 app.MapGet("/api/catalog/products", async (string? manufacturer, string? category, string? q, ICatalogRepository repository, CancellationToken cancellationToken) => Results.Ok(await repository.SearchAsync(manufacturer, category, q, cancellationToken)));
+app.MapPost("/api/catalog/imports/preview", async (HttpRequest request, CatalogImportService imports, CancellationToken cancellationToken) =>
+{
+    if (!request.HasFormContentType) return Results.BadRequest(new { error = "Expected multipart/form-data." });
+    var form = await request.ReadFormAsync(cancellationToken); var file = form.Files.GetFile("file");
+    if (file is null || file.Length == 0) return Results.BadRequest(new { error = "A non-empty file field named 'file' is required." });
+    if (file.Length > 50L * 1024L * 1024L) return Results.BadRequest(new { error = "Catalog import exceeds the 50 MB limit." });
+    try { await using var stream = file.OpenReadStream(); return Results.Ok(await imports.PreviewAsync(file.FileName, stream, cancellationToken)); }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
+    catch (InvalidDataException ex) { return Results.BadRequest(new { error = $"Catalog workbook is invalid: {ex.Message}" }); }
+});
+app.MapPost("/api/catalog/imports/apply", async (ApplyCatalogImportRequest request, CatalogImportService imports, ICatalogRepository repository, CancellationToken cancellationToken) =>
+{
+    try { return Results.Ok(await imports.ApplyAsync(request, repository, cancellationToken)); }
+    catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
 
 app.MapPost("/api/projects/{projectId:guid}/collaboration/events", async (Guid projectId, CreateCollaborationEventRequest request, ICollaborationRepository repository, IProjectEventBroadcaster broadcaster, CancellationToken cancellationToken) => { try { var created = await repository.AddEventAsync(projectId, request, cancellationToken); await broadcaster.BroadcastAsync(projectId, "projectEvent", created, cancellationToken); return Results.Created($"/api/projects/{projectId}/collaboration/events/{created.Id}", created); } catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); } }).AddEndpointFilter(new ProjectPermissionFilter("project:edit"));
 app.MapGet("/api/projects/{projectId:guid}/collaboration/events", async (Guid projectId, ICollaborationRepository repository, CancellationToken cancellationToken) => Results.Ok(await repository.ListEventsAsync(projectId, cancellationToken))).AddEndpointFilter(new ProjectPermissionFilter("project:read"));
