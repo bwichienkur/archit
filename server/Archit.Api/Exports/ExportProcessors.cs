@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Xml;
 using Archit.Api.Projects;
 
 namespace Archit.Api.Exports;
@@ -50,14 +49,15 @@ public sealed class SvgExportProcessor : IExportProcessor
         var model=BuildingModelJson.Parse(revision.Model);
         var bounds=model.Bounds();
         const double margin=24;
-        var minX=bounds.MinX-margin,minY=bounds.MinY-margin;
+        var minX=bounds.MinX-margin;
+        var minY=bounds.MinY-margin;
         var width=Math.Max(bounds.MaxX-bounds.MinX+margin*2,100);
         var height=Math.Max(bounds.MaxY-bounds.MinY+margin*2,100);
         var sb=new StringBuilder(4096);
         sb.Append("<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"")
           .Append(F(minX)).Append(' ').Append(F(minY)).Append(' ').Append(F(width)).Append(' ').Append(F(height)).Append("\" ")
           .Append("data-archit-project-id=\"").Append(job.ProjectId).Append("\" data-archit-revision-id=\"").Append(revision.Id).Append("\">\n")
-          .Append("<metadata>").Append(XmlEscape(JsonSerializer.Serialize(new { generator="Archit",model.schemaVersion,model.projectId,model.projectName,model.geometryUnits,revisionId=revision.Id,sourceImportId=revision.SourceImportId }))).Append("</metadata>\n")
+          .Append("<metadata>").Append(XmlEscape(JsonSerializer.Serialize(new { generator="Archit",schemaVersion=model.SchemaVersion,projectId=model.ProjectId,projectName=model.ProjectName,geometryUnits=model.GeometryUnits,revisionId=revision.Id,sourceImportId=revision.SourceImportId }))).Append("</metadata>\n")
           .Append("<g id=\"rooms\" fill=\"none\" stroke=\"#aeb8bd\" stroke-width=\"0.75\" stroke-dasharray=\"4 3\">\n");
         foreach(var room in model.Rooms)
         {
@@ -183,17 +183,17 @@ internal static class BuildingModelJson
         if(root.ValueKind!=JsonValueKind.Object||Int(root,"schemaVersion")!=2)throw new InvalidOperationException("SVG/glTF export requires a BuildingModelV2 revision snapshot.");
         var units=String(root,"geometryUnits");if(string.IsNullOrWhiteSpace(units)||units=="unitless")throw new InvalidOperationException("SVG/glTF export requires calibrated BuildingModelV2 geometry units.");
         return new ExportBuildingModel(2,String(root,"projectId"),String(root,"projectName"),units,
-            Array(root,"walls").Select(Wall).ToArray(),Array(root,"openings").Select(Opening).ToArray(),Array(root,"rooms").Select(Room).ToArray(),Array(root,"cabinets").Select(Cabinet).ToArray(),Array(root,"fixtures").Select(Fixture).ToArray());
+            JsonArray(root,"walls").Select(Wall).ToArray(),JsonArray(root,"openings").Select(Opening).ToArray(),JsonArray(root,"rooms").Select(Room).ToArray(),JsonArray(root,"cabinets").Select(Cabinet).ToArray(),JsonArray(root,"fixtures").Select(Fixture).ToArray());
     }
     public static double MetersPerUnit(string unit)=>unit switch{"inches"=>.0254,"feet"=>.3048,"millimeters"=>.001,"centimeters"=>.01,"meters"=>1,_=>throw new InvalidOperationException($"Unsupported geometry unit '{unit}'.")};
     private static ExportWall Wall(JsonElement e)=>new(String(e,"id"),String(e,"name"),Point(e,"start"),Point(e,"end"),Double(e,"thickness"),Double(e,"height"),Double(e,"baseElevation"),Lineage(e));
     private static ExportOpening Opening(JsonElement e)=>new(String(e,"id"),String(e,"kind"),String(e,"hostWallId"),Double(e,"offsetFromWallStart"),Double(e,"width"));
-    private static ExportRoom Room(JsonElement e)=>new(String(e,"id"),Array(e,"boundary").Select(p=>new Point2(Double(p,"x"),Double(p,"y"))).ToArray());
+    private static ExportRoom Room(JsonElement e)=>new(String(e,"id"),JsonArray(e,"boundary").Select(p=>new Point2(Double(p,"x"),Double(p,"y"))).ToArray());
     private static ExportCabinet Cabinet(JsonElement e)=>new(String(e,"id"),Point(e,"origin"),Double(e,"rotation"),Double(e,"width"),Double(e,"depth"),Double(e,"height"));
     private static ExportFixture Fixture(JsonElement e)=>new(String(e,"id"),String(e,"category"),Point(e,"origin"),Double(e,"rotation"),NullableDouble(e,"width"),NullableDouble(e,"depth"),NullableDouble(e,"height"));
     private static Point2 Point(JsonElement e,string name){var p=e.GetProperty(name);return new Point2(Double(p,"x"),Double(p,"y"));}
-    private static IReadOnlyList<string> Lineage(JsonElement e){if(!e.TryGetProperty("lineage",out var lineage)||!lineage.TryGetProperty("sourceCadEntityIds",out var ids)||ids.ValueKind!=JsonValueKind.Array)return Array.Empty<string>();return ids.EnumerateArray().Where(x=>x.ValueKind==JsonValueKind.String).Select(x=>x.GetString()!).ToArray();}
-    private static IEnumerable<JsonElement> Array(JsonElement e,string name)=>e.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.Array?value.EnumerateArray():Enumerable.Empty<JsonElement>();
+    private static IReadOnlyList<string> Lineage(JsonElement e){if(!e.TryGetProperty("lineage",out var lineage)||!lineage.TryGetProperty("sourceCadEntityIds",out var ids)||ids.ValueKind!=JsonValueKind.Array)return System.Array.Empty<string>();return ids.EnumerateArray().Where(x=>x.ValueKind==JsonValueKind.String).Select(x=>x.GetString()!).ToArray();}
+    private static IEnumerable<JsonElement> JsonArray(JsonElement e,string name)=>e.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.Array?value.EnumerateArray():Enumerable.Empty<JsonElement>();
     private static string String(JsonElement e,string name)=>e.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.String?value.GetString()??string.Empty:string.Empty;
     private static int Int(JsonElement e,string name)=>e.TryGetProperty(name,out var value)&&value.TryGetInt32(out var number)?number:0;
     private static double Double(JsonElement e,string name)=>e.TryGetProperty(name,out var value)&&value.TryGetDouble(out var number)?number:0;
