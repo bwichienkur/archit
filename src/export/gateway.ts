@@ -19,6 +19,11 @@ export type ExportJobRecord={
 export class HttpExportGateway{
   constructor(private readonly baseUrl=import.meta.env.VITE_API_URL??'http://localhost:5080'){}
 
+  async formats(){
+    const response=await apiJson<{formats:string[]}>(`${this.baseUrl}/api/exports/formats`);
+    return response.formats;
+  }
+
   async create(projectId:string,revisionId:string,format='json'){
     const session=await currentAuthSession();
     return apiJson<ExportJobRecord>(`${this.baseUrl}/api/projects/${encodeURIComponent(projectId)}/exports`,{
