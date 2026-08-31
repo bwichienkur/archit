@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Product } from '../builder/catalog';
 import { removeSelection, updateSelectionStatus, type ConfigurationSelection, type ConfigurationSession } from '../builder/configurator';
 
-export type PlatformPanel='closed'|'projects'|'3d'|'builder'|'schedules'|'collaboration';
+export type PlatformPanel='closed'|'projects'|'levels'|'3d'|'builder'|'schedules'|'collaboration';
 
 type PlatformWorkspaceState={
   panel:PlatformPanel;
