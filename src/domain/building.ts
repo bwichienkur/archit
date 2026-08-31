@@ -88,6 +88,10 @@ export type RoofPlane = {
   baseElevation: number;
   overhang: number;
   materialId?: string;
+  /** Unit vector in plan space pointing from the eave toward increasing roof elevation. */
+  riseDirection?: Point2;
+  /** Highest elevation represented by this plane when known. */
+  ridgeElevation?: number;
 };
 
 export type Cabinet = {

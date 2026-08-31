@@ -7,11 +7,11 @@ public sealed class InMemoryProjectRepository : IProjectRepository
     private readonly ConcurrentDictionary<Guid, ProjectRecord> _projects = new();
     private readonly ConcurrentDictionary<Guid, ConcurrentDictionary<Guid, ProjectRevision>> _revisions = new();
 
-    public Task<ProjectRecord> CreateAsync(string name, CancellationToken cancellationToken)
+    public Task<ProjectRecord> CreateAsync(string name, Guid? tenantId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var now = DateTimeOffset.UtcNow;
-        var project = new ProjectRecord(Guid.NewGuid(), name.Trim(), now, now);
+        var project = new ProjectRecord(Guid.NewGuid(), tenantId, name.Trim(), now, now);
         _projects[project.Id] = project;
         _revisions.TryAdd(project.Id, new ConcurrentDictionary<Guid, ProjectRevision>());
         return Task.FromResult(project);
@@ -37,13 +37,14 @@ public sealed class InMemoryProjectRepository : IProjectRepository
         if (!_projects.TryGetValue(projectId, out var project)) throw new KeyNotFoundException($"Project {projectId} was not found.");
 
         var revisions = _revisions.GetOrAdd(projectId, _ => new ConcurrentDictionary<Guid, ProjectRevision>());
-        if (request.ParentRevisionId is { } parentId && !revisions.ContainsKey(parentId))
-            throw new InvalidOperationException($"Parent revision {parentId} does not belong to project {projectId}.");
+        if (request.ParentRevisionId is { } requestedParentId && !revisions.ContainsKey(requestedParentId))
+            throw new InvalidOperationException($"Parent revision {requestedParentId} does not belong to project {projectId}.");
+        var parentRevisionId=request.ParentRevisionId??revisions.Values.OrderByDescending(item=>item.CreatedAt).ThenByDescending(item=>item.Id).FirstOrDefault()?.Id;
 
         var revision = new ProjectRevision(
             Guid.NewGuid(),
             projectId,
-            request.ParentRevisionId,
+            parentRevisionId,
             request.Kind.Trim(),
             DateTimeOffset.UtcNow,
             request.CreatedBy.Trim(),

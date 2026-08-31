@@ -1,3 +1,6 @@
+import { apiFetch } from '../auth/apiFetch';
+import { authConfigured } from '../auth/oidc';
+import { ensureActiveProject } from '../projects/activeProject';
 import type { CadDocument, CadImportValidation } from './types';
 
 export type CadImportJob = {
@@ -8,10 +11,11 @@ export type CadImportJob = {
   error?: string | null;
   document?: CadDocument | null;
   validation?: CadImportValidation | null;
+  projectId?: string | null;
 };
 
 export interface CadImportGateway {
-  upload(file: File, onProgress?: (job: CadImportJob) => void): Promise<CadImportJob>;
+  upload(file: File, projectId?: string | null, onProgress?: (job: CadImportJob) => void): Promise<CadImportJob>;
   getJob(jobId: string): Promise<CadImportJob>;
 }
 
@@ -21,10 +25,17 @@ export class HttpCadImportGateway implements CadImportGateway {
     private readonly timeoutMs = 5 * 60 * 1000,
   ) {}
 
-  async upload(file: File, onProgress?: (job: CadImportJob) => void): Promise<CadImportJob> {
+  async upload(file: File, projectId: string | null = null, onProgress?: (job: CadImportJob) => void): Promise<CadImportJob> {
+    let effectiveProjectId=projectId;
+    if(!effectiveProjectId&&authConfigured()){
+      const projectName=file.name.replace(/\.dwg$/i,'').trim()||'Imported DWG';
+      effectiveProjectId=(await ensureActiveProject(projectName)).id;
+    }
+
     const body = new FormData();
     body.append('file', file);
-    const response = await fetch(`${this.baseUrl}/api/cad/imports`, { method: 'POST', body });
+    if (effectiveProjectId) body.append('projectId', effectiveProjectId);
+    const response = await apiFetch(`${this.baseUrl}/api/cad/imports`, { method: 'POST', body });
     if (!response.ok) throw new Error(await readError(response));
     const queued = await response.json() as CadImportJob;
     onProgress?.(queued);
@@ -33,7 +44,7 @@ export class HttpCadImportGateway implements CadImportGateway {
   }
 
   async getJob(jobId: string): Promise<CadImportJob> {
-    const response = await fetch(`${this.baseUrl}/api/cad/imports/${encodeURIComponent(jobId)}`);
+    const response = await apiFetch(`${this.baseUrl}/api/cad/imports/${encodeURIComponent(jobId)}`);
     if (!response.ok) throw new Error(await readError(response));
     return response.json() as Promise<CadImportJob>;
   }

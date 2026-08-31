@@ -1,0 +1,11 @@
+import type { BuildingModelV2 } from './building';
+import { polygonArea } from '../site/siteModel';
+import { roofSlopeArea } from './roofSolver';
+
+export function buildRoomFinishSchedule(model:BuildingModelV2){return model.rooms.slice().sort((a,b)=>a.levelId.localeCompare(b.levelId)||a.name.localeCompare(b.name)).map(room=>({roomId:room.id,levelId:room.levelId,name:room.name,roomType:room.roomType,area:polygonArea(room.boundary),ceilingHeight:room.ceilingHeight,floorProductVariantId:room.floor?.productVariantId??null,wallProductVariantId:room.walls?.productVariantId??null,ceilingProductVariantId:room.ceiling?.productVariantId??null,baseboardProductVariantId:room.baseboard?.productVariantId??null,crownProductVariantId:room.crown?.productVariantId??null}));}
+
+export function buildStairSchedule(model:BuildingModelV2){const levelById=new Map(model.levels.map(level=>[level.id,level]));return model.stairs.slice().sort((a,b)=>a.fromLevelId.localeCompare(b.fromLevelId)||a.id.localeCompare(b.id)).map(stair=>({stairId:stair.id,fromLevel:levelById.get(stair.fromLevelId)?.name??stair.fromLevelId,toLevel:levelById.get(stair.toLevelId)?.name??stair.toLevelId,kind:stair.kind,width:stair.width,riserHeight:stair.riserHeight,treadDepth:stair.treadDepth,riserCount:stair.riserCount}));}
+
+export function buildRoofSchedule(model:BuildingModelV2){return model.roofPlanes.slice().sort((a,b)=>a.levelId.localeCompare(b.levelId)||a.id.localeCompare(b.id)).map(plane=>({roofPlaneId:plane.id,levelId:plane.levelId,pitch:plane.pitch,planArea:polygonArea(plane.boundary),slopeArea:roofSlopeArea(plane),overhang:plane.overhang,materialId:plane.materialId??null}));}
+
+export function buildFixtureSchedule(model:BuildingModelV2){const roomById=new Map(model.rooms.map(room=>[room.id,room.name]));return model.fixtures.slice().sort((a,b)=>a.category.localeCompare(b.category)||a.id.localeCompare(b.id)).map(fixture=>({fixtureId:fixture.id,category:fixture.category,levelId:fixture.levelId,roomId:fixture.roomId??null,roomName:fixture.roomId?roomById.get(fixture.roomId)??null:null,productVariantId:fixture.productVariantId??null,width:fixture.width??null,depth:fixture.depth??null,height:fixture.height??null}));}

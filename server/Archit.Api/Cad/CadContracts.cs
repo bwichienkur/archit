@@ -7,7 +7,8 @@ public sealed record CadImportJob(
     int Progress,
     string? Error = null,
     NormalizedCadDocument? Document = null,
-    CadImportValidation? Validation = null);
+    CadImportValidation? Validation = null,
+    Guid? ProjectId = null);
 
 public sealed record NormalizedCadDocument(
     int SchemaVersion,

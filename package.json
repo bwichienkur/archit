@@ -12,9 +12,11 @@
     "api": "dotnet run --project server/Archit.Api/Archit.Api.csproj"
   },
   "dependencies": {
+    "@microsoft/signalr": "^8.0.7",
     "@react-three/drei": "^9.121.4",
     "@react-three/fiber": "^8.17.14",
     "lucide-react": "^0.468.0",
+    "oidc-client-ts": "^3.5.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.171.0",
