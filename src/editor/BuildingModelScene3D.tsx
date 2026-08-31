@@ -1,5 +1,9 @@
 import { useMemo } from 'react';
+import { Quaternion, Vector3 } from 'three';
 import type { BuildingModelV2 } from '../domain/building';
+import { layoutStair } from '../domain/stairAdvanced';
+import { buildStairRailingPaths } from '../domain/stairRailings';
+import type { SolvedStair } from '../domain/stairSolver';
 import { decomposeWallSolids } from '../domain/wallSolids';
 import { RoomSurfaces3D, type SceneTransform2D } from './RoomSurfaces3D';
 import { RoofPlanes3D } from './RoofPlanes3D';
@@ -37,7 +41,39 @@ function wallMeshes(model:BuildingModelV2,wall:BuildingModelV2['walls'][number],
 }
 
 function stairMeshes(stair:BuildingModelV2['stairs'][number],transform:SceneTransform2D,selectedId:string|null|undefined,onSelect:BuildingModelScene3DProps['onSelect']){
-  const meshes=[];for(let i=0;i<stair.riserCount;i++){const run=(i+.5)*stair.treadDepth,height=(i+1)*stair.riserHeight;const c=Math.cos(stair.rotation),s=Math.sin(stair.rotation),origin={x:stair.origin.x+run*c,y:stair.origin.y+run*s};meshes.push(<mesh key={`${stair.id}:${i}`} position={objectPosition(origin,height/2,transform)} rotation={[0,-stair.rotation,0]} onClick={event=>{event.stopPropagation();onSelect?.('stair',stair.id)}} castShadow><boxGeometry args={[stair.treadDepth*transform.scale,Math.max(height*transform.scale,.02),stair.width*transform.scale]}/><meshStandardMaterial color={selectedId===stair.id?'#d9a441':'#b3b0aa'}/></mesh>);}return meshes;
+  const solved:SolvedStair={
+    ...stair,
+    totalRise:stair.riserCount*stair.riserHeight,
+    totalRun:Math.max(0,(stair.riserCount-1)*stair.treadDepth),
+    landingCount:stair.kind==='l'||stair.kind==='u'?1:0,
+  };
+  const layout=layoutStair(solved);
+  const selected=selectedId===stair.id;
+  const meshes=[];
+  for(const flight of layout.flights){
+    for(let i=0;i<flight.riserCount;i++){
+      const run=(i+.5)*flight.treadDepth;
+      const height=(flight.riserStart+i+1)*flight.riserHeight;
+      const origin=advance(flight.start,flight.rotation,run);
+      meshes.push(<mesh key={`${flight.id}:tread:${i}`} position={objectPosition(origin,height/2,transform)} rotation={[0,-flight.rotation,0]} onClick={event=>{event.stopPropagation();onSelect?.('stair',stair.id)}} castShadow><boxGeometry args={[flight.treadDepth*transform.scale,Math.max(height*transform.scale,.02),flight.width*transform.scale]}/><meshStandardMaterial color={selected?'#d9a441':'#b3b0aa'}/></mesh>);
+    }
+  }
+  for(const landing of layout.landings){
+    const center=landingCenter(landing.origin,landing.rotation,landing.depth,landing.width);
+    const thickness=Math.max(stair.riserHeight*.35,.05);
+    meshes.push(<mesh key={landing.id} position={objectPosition(center,landing.elevation-thickness/2,transform)} rotation={[0,-landing.rotation,0]} onClick={event=>{event.stopPropagation();onSelect?.('stair',stair.id)}} castShadow><boxGeometry args={[landing.depth*transform.scale,thickness*transform.scale,landing.width*transform.scale]}/><meshStandardMaterial color={selected?'#d9a441':'#aaa79f'}/></mesh>);
+  }
+  for(const rail of buildStairRailingPaths(layout)){
+    const start=scenePoint(rail.start,rail.startElevation+rail.guardHeight,transform);
+    const end=scenePoint(rail.end,rail.endElevation+rail.guardHeight,transform);
+    const segment=segmentTransform(start,end);
+    meshes.push(<mesh key={rail.id} position={segment.position} quaternion={segment.quaternion} onClick={event=>{event.stopPropagation();onSelect?.('stair',stair.id)}} castShadow><boxGeometry args={[segment.length,Math.max(.06*transform.scale,.018),Math.max(.06*transform.scale,.018)]}/><meshStandardMaterial color={selected?'#d9a441':'#767d80'}/></mesh>);
+  }
+  return meshes;
 }
 
+function advance(origin:{x:number;y:number},rotation:number,distance:number){return{x:origin.x+Math.cos(rotation)*distance,y:origin.y+Math.sin(rotation)*distance};}
+function landingCenter(origin:{x:number;y:number},rotation:number,depth:number,width:number){const forward=advance(origin,rotation,depth/2);return advance(forward,rotation+Math.PI/2,width/2);}
+function scenePoint(origin:{x:number;y:number},height:number,transform:SceneTransform2D):Vector3{return new Vector3((origin.x-transform.centerX)*transform.scale,height*transform.scale,(origin.y-transform.centerY)*transform.scale);}
+function segmentTransform(start:Vector3,end:Vector3){const delta=end.clone().sub(start),length=Math.max(delta.length(),.001),direction=delta.clone().normalize(),quaternion=new Quaternion().setFromUnitVectors(new Vector3(1,0,0),direction);return{position:start.clone().add(end).multiplyScalar(.5),quaternion,length};}
 function objectPosition(origin:{x:number;y:number},height:number,transform:SceneTransform2D):[number,number,number]{return[(origin.x-transform.centerX)*transform.scale,height*transform.scale,(origin.y-transform.centerY)*transform.scale];}
