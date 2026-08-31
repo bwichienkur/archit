@@ -20,6 +20,7 @@ type BuildingEditorState = {
   canUndo: boolean;
   canRedo: boolean;
   buildFromReviewedCad(document: CadDocument, projectName: string, reviewed: ReviewedCandidate[]): void;
+  replaceModel(model: BuildingModelV2, selection?: BuildingSelection): void;
   select(selection: BuildingSelection): void;
   updateWall(wallId: string, patch: Partial<Pick<ArchitecturalWall, 'start' | 'end' | 'thickness' | 'height' | 'wallType'>>): void;
   updateOpening(openingId: string, patch: Partial<Pick<WallOpening, 'offsetFromWallStart' | 'width' | 'height' | 'sillHeight' | 'subtype'>>): void;
@@ -62,6 +63,11 @@ export const useBuildingEditorStore = create<BuildingEditorState>((set, get) => 
     } catch (error) {
       set({ error: error instanceof Error ? error.message : 'Building model creation failed.' });
     }
+  },
+
+  replaceModel: (model, selection = null) => {
+    history.clear();
+    set({ model, selection, error: null, canUndo: false, canRedo: false });
   },
 
   select: selection => set({ selection }),
